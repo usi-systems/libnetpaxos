@@ -1,3 +1,8 @@
+The benchmark depends on the libevent library. Setup libevent in ubuntu 14.04
+```
+sudo apt-get install -y libevent-dev
+```
+
 # Build the microbenchmark
 
 ```
