@@ -4,16 +4,18 @@
 #include <sys/time.h>
 
 typedef struct Message {
-    unsigned int mstype:8;
-    unsigned int inst:16;
-    unsigned int rnd:8;
-    unsigned int vrnd:8;
-    uint64_t acpid;
+    uint32_t inst;
+    uint16_t rnd;
+    uint16_t vrnd;
+    uint32_t acpid;
+    uint16_t mstype;
+    uint16_t valsize;
+    uint32_t value;
     struct timeval ts;
-    char value[64];
 } Message;
 
-Message decode_message(Message m);
 void message_to_string(Message m, char *str);
+size_t pack(const Message *msg, char *buf);
+void unpack(Message *m);
 
 #endif

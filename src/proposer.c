@@ -9,7 +9,7 @@
 #include <strings.h>
 #include <inttypes.h>
 #include <time.h>
-
+#include <stdlib.h>
 #include "proposer.h"
 #include "message.h"
 #include "stat.h"
@@ -40,47 +40,46 @@ void recv_cb(evutil_socket_t fd, short what, void *arg)
     int n = recvfrom(fd, &msg, sizeof(msg), 0, (struct sockaddr *) &remote, &remote_len);
     if (n < 0)
       perror("ERROR in recvfrom");
-    Message m = decode_message(msg);
+
+    unpack(&msg);
+
     if (stat->verbose) {
         char buf[BUFSIZE];
-        message_to_string(m, buf);
+        message_to_string(msg, buf);
         printf("%s" , buf);
     }
     stat->mps++;
     struct timeval end, result;
     gettimeofday(&end, NULL);
-    if (timeval_subtract(&result, &end, &m.ts) < 0) {
+    if (timeval_subtract(&result, &end, &msg.ts) < 0) {
         printf("Latency is negative");
     }
     int64_t latency = (int64_t) (result.tv_sec*1000000 + result.tv_usec);
     stat->avg_lat += latency;
 }
 
+
 void send_cb(evutil_socket_t fd, short what, void *arg)
 {
     struct sockaddr_in *serveraddr = (struct sockaddr_in *) arg;
     socklen_t serverlen = sizeof(*serveraddr);
     Message msg;
-    msg.mstype = 3;
     msg.inst = 10;
-    msg.rnd = 31;
+    msg.rnd = 1;
     msg.vrnd = 00;
     msg.acpid = 1;
+    msg.mstype = 3;
+    msg.valsize = 0x04;
+    msg.value = 0x01020304;
 
     gettimeofday(&msg.ts, NULL);
-    bzero(msg.value, sizeof(msg.value));
-    sprintf(msg.value, "%s", "abcdefgh");
-
-    // char buf[BUFSIZE];
-    // message_to_string(msg, buf);
-    // printf("%s" , buf);
 
     size_t msglen = sizeof(msg);
-    int n = sendto(fd, &msg, msglen, 0, (struct sockaddr*) serveraddr, serverlen);
+    char *buf = malloc(msglen);
+    pack(&msg, buf);
+    int n = sendto(fd, buf, msglen, 0, (struct sockaddr*) serveraddr, serverlen);
     if (n < 0)
         perror("ERROR in sendto");
-
-    // printf("Send %d bytes\n", n);
 }
 
 int start_proposer(char* hostname, int duration, int verbose) {

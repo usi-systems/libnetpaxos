@@ -40,15 +40,15 @@ void cb_func(evutil_socket_t fd, short what, void *arg)
       perror("ERROR in recvfrom");
     // printf("Received %d bytes from %s:%d\n", n, inet_ntoa(remote.sin_addr), ntohs(remote.sin_port));
     char buf[BUFSIZE];
-    Message m = decode_message(msg);
+    unpack(&msg);
     if (stat->verbose) {
-        message_to_string(m, buf);
+        message_to_string(msg, buf);
         printf("%s" , buf);
     }
     stat->mps++;
     struct timeval end, result;
     gettimeofday(&end, NULL);
-    if (timeval_subtract(&result, &end, &m.ts) < 0) {
+    if (timeval_subtract(&result, &end, &msg.ts) < 0) {
         printf("Latency is negative");
     }
     int64_t latency = (int64_t) (result.tv_sec*1000000 + result.tv_usec);
@@ -56,7 +56,8 @@ void cb_func(evutil_socket_t fd, short what, void *arg)
 
     // Echo the received message
     size_t msglen = sizeof(msg);
-    n = sendto(fd, &msg, msglen, 0, (struct sockaddr*) &remote, remote_len);
+    pack(&msg, buf);
+    n = sendto(fd, buf, msglen, 0, (struct sockaddr*) &remote, remote_len);
     if (n < 0)
         perror("ERROR in sendto");
 
