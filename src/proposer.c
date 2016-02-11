@@ -6,10 +6,13 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <event2/event.h>
+#include <string.h>
 #include <strings.h>
 #include <inttypes.h>
 #include <time.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <fcntl.h>
 #include "proposer.h"
 #include "message.h"
 #include "stat.h"
@@ -24,8 +27,7 @@ void perf_cb(evutil_socket_t fd, short what, void *arg)
     Stat *stat = (Stat *) arg;
     if (stat->avg_lat > 0) {
         // printf("%" PRId64 "\n", stat->avg_lat);
-        printf("message/second: %d, average latency: %.2f\n",
-                stat->mps, ((double) stat->avg_lat) / stat->mps);
+        printf("%d,%.2f\n", stat->mps, ((double) stat->avg_lat) / stat->mps);
         stat->mps = 0;
         stat->avg_lat = 0;
     }
@@ -113,9 +115,11 @@ int start_proposer(char* hostname, int duration, int verbose) {
     ev_recv = event_new(base, fd, EV_READ|EV_PERSIST, recv_cb, &stat);
     ev_send = event_new(base, fd, EV_TIMEOUT|EV_PERSIST, send_cb, &serveraddr);
     ev_perf = event_new(base, -1, EV_TIMEOUT|EV_PERSIST, perf_cb, &stat);
+
     event_add(ev_recv, NULL);
     event_add(ev_send, &timeout);
     event_add(ev_perf, &perf_tm);
     event_base_dispatch(base);
+    close(fd);
     return 0;
 }

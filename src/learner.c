@@ -21,8 +21,7 @@ void monitor(evutil_socket_t fd, short what, void *arg) {
     Stat *stat = (Stat *) arg;
     if (stat->avg_lat > 0) {
         // printf("%" PRId64 "\n", stat->avg_lat);
-        printf("message/second: %d, average latency: %.2f\n",
-                stat->mps, ((double) stat->avg_lat) / stat->mps);
+        printf("%d,%.2f\n", stat->mps, ((double) stat->avg_lat) / stat->mps);
         stat->mps = 0;
         stat->avg_lat = 0;
     }
