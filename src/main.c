@@ -3,7 +3,6 @@
 #include <unistd.h>
 #include <string.h>
 #include "learner.h"
-#include "stat.h"
 #include "proposer.h"
 
 int main(int argc, char* argv[]) {
