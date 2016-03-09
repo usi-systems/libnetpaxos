@@ -6,6 +6,7 @@ typedef struct ProposerCtx {
     struct sockaddr_in *serveraddr;
     int verbose;
     int mps;
+    int cur_inst;
     int max_inst;
     int64_t avg_lat;
     int *values;

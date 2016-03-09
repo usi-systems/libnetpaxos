@@ -27,6 +27,7 @@ ProposerCtx *proposer_ctx_new(int verbose, int mps, int64_t avg_lat, int max_ins
     ctx->mps = mps;
     ctx->avg_lat = avg_lat;
     ctx->max_inst = max_inst;
+    ctx->cur_inst = 0;
     ctx->values = malloc(max_inst * sizeof(int));
     ctx->buffer = malloc(sizeof(Message));
     return ctx;
@@ -97,13 +98,15 @@ void send_cb(evutil_socket_t fd, short what, void *arg)
     ProposerCtx *ctx = (ProposerCtx *) arg;
     socklen_t serverlen = sizeof(*ctx->serveraddr);
     Message msg;
-    msg.inst = ctx->max_inst;
+    if (ctx->cur_inst >= ctx->max_inst)
+        ctx->cur_inst = 0;
+    msg.inst = ctx->cur_inst;
     msg.rnd = 1;
     msg.vrnd = 00;
     msg.acpid = 1;
     msg.mstype = 3;
-    msg.value = 0x01 + ctx->max_inst;
-    ctx->values[ctx->max_inst] = msg.value;
+    msg.value = 0x01 + ctx->cur_inst;
+    ctx->values[ctx->cur_inst] = msg.value;
 
     gettimeofday(&msg.ts, NULL);
 
@@ -112,7 +115,7 @@ void send_cb(evutil_socket_t fd, short what, void *arg)
     int n = sendto(fd, ctx->buffer, msglen, 0, (struct sockaddr*) ctx->serveraddr, serverlen);
     if (n < 0)
         perror("ERROR in sendto");
-    ctx->max_inst++;
+    ctx->cur_inst++;
 }
 
 int start_proposer(char* hostname, int duration, int verbose) {
