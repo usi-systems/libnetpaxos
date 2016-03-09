@@ -29,7 +29,6 @@ size_t pack(const Message *msg, char *buf) {
     s.vrnd = htons(msg->vrnd);
     s.acpid = htonl(msg->acpid);
     s.mstype = htons(msg->mstype);
-    s.valsize = htons(msg->valsize);
     s.value = htonl(msg->value);
     s.ts = msg->ts;
     memcpy(buf, &s, sizeof(s));
@@ -42,6 +41,5 @@ void unpack(Message *m) {
     m->vrnd = ntohs(m->vrnd);
     m->acpid = ntohl(m->acpid);
     m->mstype = ntohs(m->mstype);
-    m->valsize = ntohs(m->valsize);
     m->value = ntohl(m->value);
 }

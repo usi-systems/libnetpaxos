@@ -9,6 +9,7 @@ typedef struct ProposerCtx {
     int max_inst;
     int64_t avg_lat;
     int *values;
+    char *buffer;
 } ProposerCtx;
 
 int start_proposer();

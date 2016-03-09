@@ -79,7 +79,6 @@ void cb_func(evutil_socket_t fd, short what, void *arg)
     int64_t latency = (int64_t) (result.tv_sec*1000000 + result.tv_usec);
     ctx->avg_lat += latency;
     ctx->values[msg.inst] = msg.value;
-    printf("value %2x\n", msg.value);
     ctx->max_inst = msg.inst;
     // Echo the received message
     size_t msglen = sizeof(msg);

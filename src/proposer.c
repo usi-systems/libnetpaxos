@@ -28,10 +28,12 @@ ProposerCtx *proposer_ctx_new(int verbose, int mps, int64_t avg_lat, int max_ins
     ctx->avg_lat = avg_lat;
     ctx->max_inst = max_inst;
     ctx->values = malloc(max_inst * sizeof(int));
+    ctx->buffer = malloc(sizeof(Message));
     return ctx;
 }
 
 void proposer_ctx_destroy(ProposerCtx *st) {
+    free(st->buffer);
     free(st->values);
     free(st);
 }
@@ -100,16 +102,14 @@ void send_cb(evutil_socket_t fd, short what, void *arg)
     msg.vrnd = 00;
     msg.acpid = 1;
     msg.mstype = 3;
-    msg.valsize = 0x04;
     msg.value = 0x01 + ctx->max_inst;
     ctx->values[ctx->max_inst] = msg.value;
 
     gettimeofday(&msg.ts, NULL);
 
     size_t msglen = sizeof(msg);
-    char *buf = malloc(msglen);
-    pack(&msg, buf);
-    int n = sendto(fd, buf, msglen, 0, (struct sockaddr*) ctx->serveraddr, serverlen);
+    pack(&msg, ctx->buffer);
+    int n = sendto(fd, ctx->buffer, msglen, 0, (struct sockaddr*) ctx->serveraddr, serverlen);
     if (n < 0)
         perror("ERROR in sendto");
     ctx->max_inst++;
