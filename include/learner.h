@@ -8,6 +8,7 @@ typedef struct LearnerCtx {
     int verbose;
     int mps;
     int max_inst;
+    int num_packets;
     int64_t avg_lat;
     int *values;
 } LearnerCtx;

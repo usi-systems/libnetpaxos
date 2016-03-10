@@ -28,6 +28,7 @@ ProposerCtx *proposer_ctx_new(int verbose, int mps, int64_t avg_lat, int max_ins
     ctx->avg_lat = avg_lat;
     ctx->max_inst = max_inst;
     ctx->cur_inst = 0;
+    ctx->num_packets = 0;
     ctx->values = malloc(max_inst * sizeof(int));
     ctx->buffer = malloc(sizeof(Message));
     return ctx;
@@ -44,11 +45,14 @@ void proposer_signal_handler(evutil_socket_t fd, short what, void *arg) {
     ProposerCtx *ctx = (ProposerCtx *) arg;
     if (what&EV_SIGNAL) {
         event_base_loopbreak(ctx->base);
-        FILE *fp = fopen("proposer.txt", "w+");
+        char fname[20];
+        sprintf(fname, "proposer%d.txt", getpid());
+        FILE *fp = fopen(fname, "w+");
         int i;
         for (i = 0; i < ctx->max_inst; i++) {
             fprintf(fp, "%d\n", ctx->values[i]);
         }
+        fprintf(fp, "num_packets: %d\n", ctx->num_packets);
         fclose(fp);
         proposer_ctx_destroy(ctx);
     }
@@ -116,6 +120,7 @@ void send_cb(evutil_socket_t fd, short what, void *arg)
     if (n < 0)
         perror("ERROR in sendto");
     ctx->cur_inst++;
+    ctx->num_packets++;
 }
 
 int start_proposer(char* hostname, int duration, int verbose) {

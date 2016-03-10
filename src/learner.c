@@ -23,6 +23,7 @@ LearnerCtx *learner_ctx_new(int verbose, int mps, int64_t avg_lat, int max_inst)
     ctx->mps = mps;
     ctx->avg_lat = avg_lat;
     ctx->max_inst = max_inst;
+    ctx->num_packets = 0;
     ctx->values = malloc(max_inst * sizeof(int));
     return ctx;
 }
@@ -41,6 +42,7 @@ void signal_handler(evutil_socket_t fd, short what, void *arg) {
         for (i = 0; i <= ctx->max_inst; i++) {
             fprintf(fp, "%d\n", ctx->values[i]);
         }
+        fprintf(fp, "num_packets: %d\n", ctx->num_packets);
         fclose(fp);
         learner_ctx_destroy(ctx);
     }
@@ -86,6 +88,7 @@ void cb_func(evutil_socket_t fd, short what, void *arg)
     n = sendto(fd, buf, msglen, 0, (struct sockaddr*) &remote, remote_len);
     if (n < 0)
         perror("ERROR in sendto");
+    ctx->num_packets++;
 }
 
 int start_learner(int verbose) {
