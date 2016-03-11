@@ -112,9 +112,9 @@ int start_learner(int verbose) {
     struct timeval timeout = {1, 0};
     monitor_ev = event_new(ctx->base, -1, EV_TIMEOUT|EV_PERSIST, monitor, ctx);
     evsig = evsignal_new(ctx->base, SIGTERM, signal_handler, ctx);
-    event_priority_set(monitor_ev, 0);
-    event_priority_set(recv_ev, 1);
-    event_priority_set(evsig, 2);
+    event_priority_set(evsig, 0);
+    event_priority_set(monitor_ev, 1);
+    event_priority_set(recv_ev, 2);
     
     event_add(recv_ev, NULL);
     event_add(monitor_ev, &timeout);

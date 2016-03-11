@@ -157,9 +157,9 @@ int start_proposer(char* hostname, int duration, int verbose) {
     ev_perf = event_new(ctx->base, -1, EV_TIMEOUT|EV_PERSIST, perf_cb, ctx);
     evsig = evsignal_new(ctx->base, SIGTERM, proposer_signal_handler, ctx);
 
-    event_priority_set(ev_perf, 0);
-    event_priority_set(ev_send, 1);
-    event_priority_set(evsig, 2);
+    event_priority_set(evsig, 0);
+    event_priority_set(ev_perf, 1);
+    event_priority_set(ev_send, 2);
     event_priority_set(ev_recv, 3);
 
     event_add(ev_recv, NULL);
