@@ -126,6 +126,7 @@ void send_cb(evutil_socket_t fd, short what, void *arg)
 int start_proposer(char* hostname, int duration, int verbose) {
     ProposerCtx *ctx = proposer_ctx_new(verbose, 0, 0.0, 65536);
     ctx->base = event_base_new();
+    event_base_priority_init(ctx->base, 4);
     ctx->max_inst = 0;
     struct hostent *server;
     int serverlen;
@@ -148,20 +149,25 @@ int start_proposer(char* hostname, int duration, int verbose) {
     bcopy((char *)server->h_addr,
       (char *)&(ctx->serveraddr->sin_addr.s_addr), server->h_length);
     ctx->serveraddr->sin_port = htons(LEARNER_PORT);
-    struct event *ev_recv, *ev_send, *ev_perf;
+    struct event *ev_recv, *ev_send, *ev_perf, *evsig;
     struct timeval timeout = {0, duration};
     struct timeval perf_tm = {1, 0};
     ev_recv = event_new(ctx->base, fd, EV_READ|EV_PERSIST, recv_cb, ctx);
     ev_send = event_new(ctx->base, fd, EV_TIMEOUT|EV_PERSIST, send_cb, ctx);
     ev_perf = event_new(ctx->base, -1, EV_TIMEOUT|EV_PERSIST, perf_cb, ctx);
+    evsig = evsignal_new(ctx->base, SIGTERM, proposer_signal_handler, ctx);
+
+    event_priority_set(ev_perf, 0);
+    event_priority_set(ev_send, 1);
+    event_priority_set(evsig, 2);
+    event_priority_set(ev_recv, 3);
 
     event_add(ev_recv, NULL);
     event_add(ev_send, &timeout);
     event_add(ev_perf, &perf_tm);
     /* Signal event to terminate event loop */
-    struct event *evsig;
-    evsig = evsignal_new(ctx->base, SIGTERM, proposer_signal_handler, ctx);
     event_add(evsig, NULL);
+    
 
     event_base_dispatch(ctx->base);
     close(fd);

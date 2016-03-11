@@ -94,7 +94,7 @@ void cb_func(evutil_socket_t fd, short what, void *arg)
 int start_learner(int verbose) {
     LearnerCtx *ctx = learner_ctx_new(verbose, 0, 0.0, 65536);
     ctx->base = event_base_new();
-
+    event_base_priority_init(ctx->base, 4);
     int fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (fd < 0) {
         perror("cannot create socket");
@@ -107,15 +107,18 @@ int start_learner(int verbose) {
     serv_addr.sin_addr.s_addr = INADDR_ANY;
     if (bind(fd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
         perror("ERROR on binding");
-    struct event *recv_ev, *monitor_ev;
+    struct event *recv_ev, *monitor_ev, *evsig;
     recv_ev = event_new(ctx->base, fd, EV_READ|EV_PERSIST, cb_func, ctx);
     struct timeval timeout = {1, 0};
     monitor_ev = event_new(ctx->base, -1, EV_TIMEOUT|EV_PERSIST, monitor, ctx);
+    evsig = evsignal_new(ctx->base, SIGTERM, signal_handler, ctx);
+    event_priority_set(monitor_ev, 0);
+    event_priority_set(recv_ev, 1);
+    event_priority_set(evsig, 2);
+    
     event_add(recv_ev, NULL);
     event_add(monitor_ev, &timeout);
     /* Signal event to terminate event loop */
-    struct event *evsig;
-    evsig = evsignal_new(ctx->base, SIGTERM, signal_handler, ctx);
     event_add(evsig, NULL);
 
     event_base_dispatch(ctx->base);
