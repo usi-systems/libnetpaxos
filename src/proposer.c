@@ -28,7 +28,9 @@ ProposerCtx *proposer_ctx_new(int verbose, int mps, int64_t avg_lat, int max_ins
     ctx->avg_lat = avg_lat;
     ctx->max_inst = max_inst;
     ctx->cur_inst = 0;
-    ctx->num_packets = 0;
+    ctx->sent_packets = 0;
+    ctx->acked_packets = 0;
+    ctx->last_acked = 0;
     ctx->values = malloc(max_inst * sizeof(int));
     ctx->buffer = malloc(sizeof(Message));
     return ctx;
@@ -52,7 +54,8 @@ void proposer_signal_handler(evutil_socket_t fd, short what, void *arg) {
         for (i = 0; i < ctx->max_inst; i++) {
             fprintf(fp, "%d\n", ctx->values[i]);
         }
-        fprintf(fp, "num_packets: %d\n", ctx->num_packets);
+        fprintf(fp, "sent_packets: %d\n", ctx->sent_packets);
+        fprintf(fp, "acked_packets: %d\n", ctx->acked_packets);
         fclose(fp);
         proposer_ctx_destroy(ctx);
     }
@@ -62,11 +65,13 @@ void proposer_signal_handler(evutil_socket_t fd, short what, void *arg) {
 void perf_cb(evutil_socket_t fd, short what, void *arg)
 {
     ProposerCtx *ctx = (ProposerCtx *) arg;
+    int diff = ctx->acked_packets - ctx->last_acked;
     if (ctx->avg_lat > 0) {
-        printf("%d,%.2f\n", ctx->mps, ((double) ctx->avg_lat) / ctx->mps);
+        printf("%d,%d,%.2f\n", diff, ctx->mps, ((double) ctx->avg_lat) / ctx->mps);
         ctx->mps = 0;
         ctx->avg_lat = 0;
     }
+    ctx->last_acked = ctx->acked_packets;
 }
 
 void recv_cb(evutil_socket_t fd, short what, void *arg)
@@ -94,6 +99,7 @@ void recv_cb(evutil_socket_t fd, short what, void *arg)
     }
     int64_t latency = (int64_t) (result.tv_sec*1000000 + result.tv_usec);
     ctx->avg_lat += latency;
+    ctx->acked_packets++;
 }
 
 
@@ -120,7 +126,7 @@ void send_cb(evutil_socket_t fd, short what, void *arg)
     if (n < 0)
         perror("ERROR in sendto");
     ctx->cur_inst++;
-    ctx->num_packets++;
+    ctx->sent_packets++;
 }
 
 int start_proposer(char* hostname, int duration, int verbose) {
