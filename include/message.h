@@ -11,6 +11,7 @@ typedef struct Message {
     uint16_t mstype;
     uint32_t value;
     struct timeval ts;
+    char   junk[1400];
 } Message;
 
 void message_to_string(Message m, char *str);
