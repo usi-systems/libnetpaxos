@@ -67,7 +67,7 @@ void perf_cb(evutil_socket_t fd, short what, void *arg)
     ProposerCtx *ctx = (ProposerCtx *) arg;
     int diff = ctx->acked_packets - ctx->last_acked;
     if (ctx->avg_lat > 0) {
-        printf("%d,%d,%.2f\n", diff, ctx->mps, ((double) ctx->avg_lat) / ctx->mps);
+        printf("%d,%.2f\n", ctx->mps, ((double) ctx->avg_lat) / ctx->mps);
         ctx->mps = 0;
         ctx->avg_lat = 0;
     }
