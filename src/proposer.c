@@ -127,6 +127,9 @@ void send_cb(evutil_socket_t fd, short what, void *arg)
         perror("ERROR in sendto");
     ctx->cur_inst++;
     ctx->sent_packets++;
+    if (ctx->sent_packets >= 1000000) {
+        raise(SIGTERM);
+    }
 }
 
 int start_proposer(char* hostname, int duration, int verbose) {
