@@ -89,14 +89,14 @@ if __name__ == "__main__":
 
     if not os.path.exists(args.output):
         os.makedirs(args.output)
-    nodes = [ args.learner ]
+    learners = [ args.learner ]
     parm = {'user': args.user}
 
     clients = [ args.proposer ]
     parm = {'user': args.user}
 
     print "kill replicas and client after %d seconds" % args.time
-    t1 = Timer(args.time, kill_all_servers, nodes, parm)
+    t1 = Timer(args.time, kill_all_servers, learners, parm)
     t1.start()
     t2 = Timer(args.time, kill_all_clients, clients, parm)
     t2.start()
@@ -110,6 +110,7 @@ if __name__ == "__main__":
         p.wait()
 
     print "copy data"
+    nodes = [ args.learner, args.proposer ]
     copy_data(args.output, args.user, nodes)
     delete_data(args.user, nodes)
     # check_result(args.output)
