@@ -15,16 +15,14 @@
 #include "config.h"
 
 /* Here's a callback function that calls loop break */
-#define LEARNER_PORT 34952
-#define BUFSIZE 1470
-
-LearnerCtx *learner_ctx_new(int verbose, int mps, int64_t avg_lat, int max_inst) {
+LearnerCtx *learner_ctx_new(int verbose, int max_inst, int bufsize) {
     LearnerCtx *ctx = malloc(sizeof(LearnerCtx));
     ctx->verbose = verbose;
-    ctx->mps = mps;
-    ctx->avg_lat = avg_lat;
+    ctx->mps = 0;
+    ctx->avg_lat = 0.0;
     ctx->max_inst = max_inst;
     ctx->num_packets = 0;
+    ctx->bufsize = bufsize;
     ctx->values = malloc(max_inst * sizeof(int));
     return ctx;
 }
@@ -67,7 +65,7 @@ void cb_func(evutil_socket_t fd, short what, void *arg)
     int n = recvfrom(fd, &msg, sizeof(msg), 0, (struct sockaddr *) &remote, &remote_len);
     if (n < 0)
       perror("ERROR in recvfrom");
-    char buf[BUFSIZE];
+    char buf[ctx->bufsize];
     unpack(&msg);
     if (ctx->verbose) {
         message_to_string(msg, buf);
@@ -82,7 +80,6 @@ void cb_func(evutil_socket_t fd, short what, void *arg)
     int64_t latency = (int64_t) (result.tv_sec*1000000 + result.tv_usec);
     ctx->avg_lat += latency;
     ctx->values[msg.inst] = msg.value;
-    ctx->max_inst = msg.inst;
     // Echo the received message
     size_t msglen = sizeof(msg);
     pack(&msg, buf);
@@ -90,10 +87,14 @@ void cb_func(evutil_socket_t fd, short what, void *arg)
     if (n < 0)
         perror("ERROR in sendto");
     ctx->num_packets++;
+
+    if (msg.inst == ctx->max_inst - 1) {
+        raise(SIGTERM);
+    }
 }
 
 int start_learner(Config *conf) {
-    LearnerCtx *ctx = learner_ctx_new(conf->verbose, 0, 0.0, 65536);
+    LearnerCtx *ctx = learner_ctx_new(conf->verbose, conf->maxinst, conf->bufsize);
     ctx->base = event_base_new();
     event_base_priority_init(ctx->base, 4);
     int fd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -104,7 +105,7 @@ int start_learner(Config *conf) {
     struct sockaddr_in serv_addr;
     bzero((char *) &serv_addr, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(LEARNER_PORT);
+    serv_addr.sin_port = htons(conf->learner_port);
     serv_addr.sin_addr.s_addr = INADDR_ANY;
     if (bind(fd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
         perror("ERROR on binding");

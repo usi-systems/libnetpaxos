@@ -6,6 +6,9 @@ typedef struct Config {
     int minute;
     int microsecond;
     int verbose;
+    int learner_port;
+    int bufsize;
+    int maxinst;
     char server[64];
 } Config;
 

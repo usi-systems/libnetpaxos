@@ -37,6 +37,15 @@ Config *parse_conf(char *config_file) {
         else if (strcmp(key, "SERVER") == 0) {
             strcpy(conf->server, value);
         }
+        else if (strcmp(key, "LEARNER_PORT") == 0) {
+            conf->learner_port = atoi(value);
+        }
+        else if (strcmp(key, "BUFSIZE") == 0) {
+            conf->bufsize = atoi(value);
+        }
+        else if (strcmp(key, "MAXINST") == 0) {
+            conf->maxinst = atoi(value);
+        }
     }
     fclose(fp);
     if (line)

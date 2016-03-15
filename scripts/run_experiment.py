@@ -44,6 +44,13 @@ def copy_data(output, user, nodes):
         ssh = subprocess.Popen(shlex.split(cmd))
         ssh.wait()
 
+def delete_data(user, nodes):
+    for h in nodes:
+        cmd = "ssh {0}@{1} rm -f *.txt".format(user, h)
+        print cmd
+        ssh = subprocess.Popen(shlex.split(cmd))
+        ssh.wait()
+
 
 def check_result(output):
     cmd = "diff {0}/learner.txt {0}/proposer.txt".format(output)
@@ -78,19 +85,21 @@ if __name__ == "__main__":
     nodes = [ args.learner, args.proposer ]
     parm = {'user': args.user}
 
+    print "kill replicas and client after %d seconds" % args.time
+    t= Timer(args.time, kill_all, nodes, parm)
+    t.start()
+
     pipes = []
     pipes.append(start_learner(args.user, args.learner, args.path, args.output))
     for i in range(args.multi):
         pipes.append(start_proposer(args.user, args.proposer, args.path, 
             args.server, args.speed, args.output, i))
-    print "kill replicas and client after %d seconds" % args.time
-    t= Timer(args.time, kill_all, nodes, parm)
-    t.start()
    
     for p in pipes:
         p.wait()
 
     print "copy data"
     copy_data(args.output, args.user, nodes)
+    delete_data(args.user, nodes)
     # check_result(args.output)
     # plotpaxos.plot_line("%s/learner.log" % args.output, "%s/figure.pdf" % args.output)
