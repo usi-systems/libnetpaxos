@@ -12,18 +12,16 @@ cmake -DCMAKE_BUILD_TYPE=Release ..
 make
 ```
 
-# How to run a server
+# How to run a learner (server)
 
 In the Release directory, run:
 
 ```
-./netpaxos -l
+./learner ../libperf.conf
 ```
 
-# How to run the client
-
-syntax: netpaxos -p -h <server-ip-address> -d <duration>
+# How to run the proposer (client)
 
 ```
-./netpaxos -p -h localhost -d 10000
+./proposer ../libperf.conf
 ```
