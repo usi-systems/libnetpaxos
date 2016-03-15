@@ -7,7 +7,7 @@ typedef struct Message {
     uint32_t inst;
     uint16_t rnd;
     uint16_t vrnd;
-    uint32_t acpid;
+    uint16_t acpid;
     uint16_t mstype;
     uint32_t value;
     struct timeval ts;

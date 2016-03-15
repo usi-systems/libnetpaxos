@@ -13,7 +13,7 @@ void message_to_string(Message m, char *str) {
         "instance: %.8x\n"
         "round:    %.4x\n"
         "vround:   %.4x\n"
-        "acceptor: %.8x\n"
+        "acceptor: %.4x\n"
         "time: %lld.%06ld\n"
         "value:    %.8x\n",
         m.mstype, m.inst, m.rnd, m.vrnd,
@@ -27,7 +27,7 @@ size_t pack(const Message *msg, char *buf) {
     s.inst = htonl(msg->inst);
     s.rnd = htons(msg->rnd);
     s.vrnd = htons(msg->vrnd);
-    s.acpid = htonl(msg->acpid);
+    s.acpid = htons(msg->acpid);
     s.mstype = htons(msg->mstype);
     s.value = htonl(msg->value);
     s.ts = msg->ts;
@@ -39,7 +39,7 @@ void unpack(Message *m) {
     m->inst = ntohl(m->inst);
     m->rnd = ntohs(m->rnd);
     m->vrnd = ntohs(m->vrnd);
-    m->acpid = ntohl(m->acpid);
+    m->acpid = ntohs(m->acpid);
     m->mstype = ntohs(m->mstype);
     m->value = ntohl(m->value);
 }
