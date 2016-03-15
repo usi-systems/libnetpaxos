@@ -9,8 +9,8 @@ import pandas as pd
 import numpy as np
 import plotpaxos
 
-def start_proposer(user, host, path, server, speed, output, proid):
-    cmd = "ssh {0}@{1} {2}/netpaxos -p -h {3} -d {4}".format(user, host, path, server, speed)
+def start_proposer(user, host, path, config, output, proid):
+    cmd = "ssh {0}@{1} {2}/proposer {3}".format(user, host, path, config)
     print cmd
     with open("%s/%s-%d.log" % (output, "proposer", proid), "w+") as out:
         ssh = subprocess.Popen(shlex.split(cmd),
@@ -19,8 +19,8 @@ def start_proposer(user, host, path, server, speed, output, proid):
                                 shell=False)
     return ssh
 
-def start_learner(user, host, path, output):
-    cmd = "ssh {0}@{1} {2}/netpaxos -l".format(user, host, path)
+def start_learner(user, host, path, config, output):
+    cmd = "ssh {0}@{1} {2}/learner {3}".format(user, host, path, config)
     print cmd
     with open("%s/%s.log" % (output, "learner"), "a+") as out:
         ssh = subprocess.Popen(shlex.split(cmd),
@@ -30,9 +30,15 @@ def start_learner(user, host, path, output):
     return ssh
 
 
-def kill_all(*nodes, **parm):
+def kill_all_clients(*nodes, **parm):
     for h in nodes:
-        cmd = "ssh {0}@{1} pkill netpaxos".format(parm['user'], h)
+        cmd = "ssh {0}@{1} pkill proposer".format(parm['user'], h)
+        ssh = subprocess.Popen(shlex.split(cmd))
+        ssh.wait()
+
+def kill_all_servers(*nodes, **parm):
+    for h in nodes:
+        cmd = "ssh {0}@{1} pkill learner".format(parm['user'], h)
         ssh = subprocess.Popen(shlex.split(cmd))
         ssh.wait()
 
@@ -72,28 +78,33 @@ if __name__ == "__main__":
     parser.add_argument('--speed', type=int, default=10000, help='duration between two proposals')
     parser.add_argument('--multi', type=int, default=2, help='number of client')
     parser.add_argument('--verbose', default=False, action='store_true', help='verbose flag')
-    parser.add_argument('--path', default='/libperf/ubuntu', help='path to programs')
+    parser.add_argument('--path', default='/libperf/build', help='path to programs')
     parser.add_argument('--user', default='vagrant', help='login name of ssh')
     parser.add_argument('--learner', default='sdn-vm', help='learner hostname')
     parser.add_argument('--proposer', default='sdn-vm', help='proposer hostname')
     parser.add_argument('--server', default='localhost', help='server hostname')
+    parser.add_argument('--config', required=True, help='config file')
     parser.add_argument('--output', default='output', help='output folder')
     args = parser.parse_args()
 
     if not os.path.exists(args.output):
         os.makedirs(args.output)
-    nodes = [ args.learner, args.proposer ]
+    nodes = [ args.learner ]
+    parm = {'user': args.user}
+
+    clients = [ args.proposer ]
     parm = {'user': args.user}
 
     print "kill replicas and client after %d seconds" % args.time
-    t= Timer(args.time, kill_all, nodes, parm)
-    t.start()
+    t1 = Timer(args.time, kill_all_servers, nodes, parm)
+    t1.start()
+    t2 = Timer(args.time, kill_all_clients, clients, parm)
+    t2.start()
 
     pipes = []
-    pipes.append(start_learner(args.user, args.learner, args.path, args.output))
+    pipes.append(start_learner(args.user, args.learner, args.path, args.config, args.output))
     for i in range(args.multi):
-        pipes.append(start_proposer(args.user, args.proposer, args.path, 
-            args.server, args.speed, args.output, i))
+        pipes.append(start_proposer(args.user, args.proposer, args.path, args.config, args.output, i))
    
     for p in pipes:
         p.wait()
