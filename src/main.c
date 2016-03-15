@@ -4,42 +4,22 @@
 #include <string.h>
 #include "learner.h"
 #include "proposer.h"
+#include "config.h"
 
 int main(int argc, char* argv[]) {
-    int opt = 0;
-    int role = 0;
-    char *hostname;
-    int duration = 10000;
-    int verbose = 0;
-    while ((opt = getopt(argc, argv, "vplh:d:")) != -1) {
-        switch(opt) {
-            case 'p':
-                role = 1;
-                break;
-            case 'l':
-                role = 2;
-                break;
-            case 'v':
-                verbose = 1;
-                break;
-            case 'h':
-                hostname = optarg;
-                break;
-            case 'd':
-                duration = atoi(optarg);
-                break;
-        }
-    }
 
-    if (role == 1) {
+    Config *conf = parse_conf(argv[1]);
+
+    if (conf->role == 1) {
         // start proposer
-        start_proposer(hostname, duration, verbose);
-    } else if (role == 2) {
+        start_proposer(conf);
+    } else if (conf->role == 2) {
         // start learner
-        start_learner(verbose);
+        start_learner(conf);
     } else {
         printf("Role was not set.\n");
     }
-    return 0;
 
+    free(conf);
+    return (EXIT_SUCCESS);
 }

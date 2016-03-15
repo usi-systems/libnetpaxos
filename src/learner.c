@@ -12,6 +12,7 @@
 #include "message.h"
 #include "learner.h"
 #include "netpaxos_utils.h"
+#include "config.h"
 
 /* Here's a callback function that calls loop break */
 #define LEARNER_PORT 34952
@@ -91,8 +92,8 @@ void cb_func(evutil_socket_t fd, short what, void *arg)
     ctx->num_packets++;
 }
 
-int start_learner(int verbose) {
-    LearnerCtx *ctx = learner_ctx_new(verbose, 0, 0.0, 65536);
+int start_learner(Config *conf) {
+    LearnerCtx *ctx = learner_ctx_new(conf->verbose, 0, 0.0, 65536);
     ctx->base = event_base_new();
     event_base_priority_init(ctx->base, 4);
     int fd = socket(AF_INET, SOCK_DGRAM, 0);

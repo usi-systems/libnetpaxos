@@ -14,9 +14,11 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <errno.h>
 #include "proposer.h"
 #include "message.h"
 #include "netpaxos_utils.h"
+#include "config.h"
 
 #define LEARNER_PORT 34952
 #define BUFSIZE 1470
@@ -132,8 +134,8 @@ void send_cb(evutil_socket_t fd, short what, void *arg)
     }
 }
 
-int start_proposer(char* hostname, int duration, int verbose) {
-    ProposerCtx *ctx = proposer_ctx_new(verbose, 0, 0.0, 65536);
+int start_proposer(Config *conf) {
+    ProposerCtx *ctx = proposer_ctx_new(conf->verbose, 0, 0.0, 65536);
     ctx->base = event_base_new();
     event_base_priority_init(ctx->base, 4);
     ctx->max_inst = 0;
@@ -146,9 +148,9 @@ int start_proposer(char* hostname, int duration, int verbose) {
         perror("cannot create socket");
     }
 
-    server = gethostbyname(hostname);
+    server = gethostbyname(conf->server);
     if (server == NULL) {
-        fprintf(stderr, "ERROR, no such host as %s\n", hostname);
+        fprintf(stderr, "ERROR, no such host as %s\n", conf->server);
         return -1;
     }
 
@@ -159,7 +161,7 @@ int start_proposer(char* hostname, int duration, int verbose) {
       (char *)&(ctx->serveraddr->sin_addr.s_addr), server->h_length);
     ctx->serveraddr->sin_port = htons(LEARNER_PORT);
     struct event *ev_recv, *ev_send, *ev_perf, *evsig;
-    struct timeval timeout = {0, duration};
+    struct timeval timeout = {conf->minute, conf->microsecond};
     struct timeval perf_tm = {1, 0};
     ev_recv = event_new(ctx->base, fd, EV_READ|EV_PERSIST, recv_cb, ctx);
     ev_send = event_new(ctx->base, fd, EV_TIMEOUT|EV_PERSIST, send_cb, ctx);
@@ -176,8 +178,6 @@ int start_proposer(char* hostname, int duration, int verbose) {
     event_add(ev_perf, &perf_tm);
     /* Signal event to terminate event loop */
     event_add(evsig, NULL);
-    
-
     event_base_dispatch(ctx->base);
     close(fd);
     return 0;
