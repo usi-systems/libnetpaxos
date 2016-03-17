@@ -1,5 +1,6 @@
 #ifndef _PROPOSER_H_
 #define _PROPOSER_H_
+#include <event2/event.h>
 #include "config.h"
 
 typedef struct ProposerCtx {
@@ -11,6 +12,7 @@ typedef struct ProposerCtx {
     int max_inst;
     int acked_packets;
     int enable_paxos;
+    struct event *resend;
     int64_t avg_lat;
     int *values;
     char *buffer;

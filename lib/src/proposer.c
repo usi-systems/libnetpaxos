@@ -77,50 +77,64 @@ void perf_cb(evutil_socket_t fd, short what, void *arg)
 void recv_cb(evutil_socket_t fd, short what, void *arg)
 {
     ProposerCtx *ctx = (ProposerCtx *) arg;
-    int64_t latency;
-    struct sockaddr_in remote;
-    socklen_t remote_len = sizeof(remote);
-
-    struct timeval end, result;
-    gettimeofday(&end, NULL);
-
-    if (ctx->enable_paxos) {
-        Message msg;
-        int n = recvfrom(fd, &msg, sizeof(msg), 0, (struct sockaddr *) &remote, &remote_len);
-        if (n < 0)
-          perror("ERROR in recvfrom");
-
-        unpack(&msg);
-
-        if (ctx->verbose) {
-            char buf[BUFSIZE];
-            message_to_string(msg, buf);
-            printf("%s" , buf);
-        }
-        if (timeval_subtract(&result, &end, &msg.ts) < 0) {
-            printf("Latency is negative");
-        }
-        latency = (int64_t) (result.tv_sec*1000000 + result.tv_usec);
-    } else {
-        struct timeval msg;
-        int n = recvfrom(fd, &msg, sizeof(msg), 0, (struct sockaddr *) &remote, &remote_len);
-        if (n < 0)
-          perror("ERROR in recvfrom");
-
-        if (timeval_subtract(&result, &end, &msg) < 0) {
-            printf("Latency is negative");
-        }
-        latency = (int64_t) (result.tv_sec*1000000 + result.tv_usec);
-    }
-
-    ctx->avg_lat += latency;
-    ctx->acked_packets++;
-    ctx->mps++;
-
-    if (ctx->acked_packets >= ctx->max_inst) {
-        raise(SIGTERM);
-    } else
+    if (what&EV_TIMEOUT) {
+        printf("event timeout called\n");
+        
         send_value(fd, ctx);
+        ctx->resend = event_new(ctx->base, fd, EV_TIMEOUT, recv_cb, ctx);
+        event_add(ctx->resend, &(struct timeval){1, 0});
+    } else {
+        if (ctx->resend) {
+            event_del(ctx->resend);
+        }
+        int64_t latency;
+        struct sockaddr_in remote;
+        socklen_t remote_len = sizeof(remote);
+
+        struct timeval end, result;
+        gettimeofday(&end, NULL);
+
+        if (ctx->enable_paxos) {
+            Message msg;
+            int n = recvfrom(fd, &msg, sizeof(msg), 0, (struct sockaddr *) &remote, &remote_len);
+            if (n < 0)
+              perror("ERROR in recvfrom");
+
+            unpack(&msg);
+
+            if (ctx->verbose) {
+                char buf[BUFSIZE];
+                message_to_string(msg, buf);
+                printf("%s" , buf);
+            }
+            if (timeval_subtract(&result, &end, &msg.ts) < 0) {
+                printf("Latency is negative");
+            }
+            latency = (int64_t) (result.tv_sec*1000000 + result.tv_usec);
+        } else {
+            struct timeval msg;
+            int n = recvfrom(fd, &msg, sizeof(msg), 0, (struct sockaddr *) &remote, &remote_len);
+            if (n < 0)
+              perror("ERROR in recvfrom");
+
+            if (timeval_subtract(&result, &end, &msg) < 0) {
+                printf("Latency is negative");
+            }
+            latency = (int64_t) (result.tv_sec*1000000 + result.tv_usec);
+        }
+
+        ctx->avg_lat += latency;
+        ctx->acked_packets++;
+        ctx->mps++;
+
+        if (ctx->acked_packets >= ctx->max_inst) {
+            raise(SIGTERM);
+        } else {
+            send_value(fd, ctx);
+            ctx->resend = event_new(ctx->base, fd, EV_TIMEOUT, recv_cb, ctx);
+            event_add(ctx->resend, &(struct timeval) {1, 0});
+        }
+    }
 }
 
 
@@ -154,7 +168,6 @@ void send_value(evutil_socket_t fd, void *arg)
             perror("ERROR in sendto");
         ctx->cur_inst++;
     }
-
 }
 
 int start_proposer(Config *conf) {
