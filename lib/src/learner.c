@@ -20,7 +20,7 @@ LearnerCtx *learner_ctx_new(int verbose, int max_inst, int bufsize) {
     ctx->verbose = verbose;
     ctx->mps = 0;
     ctx->avg_lat = 0.0;
-    ctx->max_inst = max_inst;
+    ctx->max_inst = max_inst-1;
     ctx->num_packets = 0;
     ctx->bufsize = bufsize;
     ctx->values = malloc(max_inst * sizeof(int));
@@ -88,7 +88,7 @@ void cb_func(evutil_socket_t fd, short what, void *arg)
         perror("ERROR in sendto");
     ctx->num_packets++;
 
-    if (msg.inst == ctx->max_inst - 1) {
+    if (ctx->num_packets == ctx->max_inst) {
         raise(SIGTERM);
     }
 }

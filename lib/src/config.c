@@ -28,7 +28,7 @@ Config *parse_conf(char *config_file) {
         else if (strcmp(key, "VERBOSE") == 0) {
             conf->verbose = atoi(value);
         }
-        else if (strcmp(key, "MINUTE") == 0) {
+        else if (strcmp(key, "SECOND") == 0) {
             conf->minute = atoi(value);
         }
         else if (strcmp(key, "MICROSECOND") == 0) {

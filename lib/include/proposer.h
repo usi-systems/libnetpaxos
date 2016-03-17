@@ -8,15 +8,14 @@ typedef struct ProposerCtx {
     int mps;
     int cur_inst;
     int max_inst;
-    int sent_packets;
     int acked_packets;
-    int last_acked;
     int64_t avg_lat;
     int *values;
     char *buffer;
 } ProposerCtx;
 
 int start_proposer();
-ProposerCtx *proposer_ctx_new(int verbose, int mps, int64_t avg_lat, int max_inst);
+ProposerCtx *proposer_ctx_new(int verbose, int max_inst);
 void proposer_ctx_destroy(ProposerCtx *st);
+void send_value(evutil_socket_t fd, void *arg);
 #endif
