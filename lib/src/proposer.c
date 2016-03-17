@@ -79,14 +79,8 @@ void recv_cb(evutil_socket_t fd, short what, void *arg)
     ProposerCtx *ctx = (ProposerCtx *) arg;
     if (what&EV_TIMEOUT) {
         printf("event timeout called\n");
-        
         send_value(fd, ctx);
-        ctx->resend = event_new(ctx->base, fd, EV_TIMEOUT, recv_cb, ctx);
-        event_add(ctx->resend, &(struct timeval){1, 0});
     } else {
-        if (ctx->resend) {
-            event_del(ctx->resend);
-        }
         int64_t latency;
         struct sockaddr_in remote;
         socklen_t remote_len = sizeof(remote);
@@ -131,8 +125,6 @@ void recv_cb(evutil_socket_t fd, short what, void *arg)
             raise(SIGTERM);
         } else {
             send_value(fd, ctx);
-            ctx->resend = event_new(ctx->base, fd, EV_TIMEOUT, recv_cb, ctx);
-            event_add(ctx->resend, &(struct timeval) {1, 0});
         }
     }
 }
@@ -197,6 +189,7 @@ int start_proposer(Config *conf) {
     ctx->serveraddr->sin_port = htons(LEARNER_PORT);
     struct event *ev_recv, *ev_send, *ev_perf, *evsig;
     struct timeval perf_tm = {1, 0};
+    struct timeval rc_tm =   {0, 104729};
     ev_recv = event_new(ctx->base, fd, EV_READ|EV_PERSIST, recv_cb, ctx);
     ev_perf = event_new(ctx->base, -1, EV_TIMEOUT|EV_PERSIST, perf_cb, ctx);
     evsig = evsignal_new(ctx->base, SIGTERM, proposer_signal_handler, ctx);
@@ -205,7 +198,7 @@ int start_proposer(Config *conf) {
     event_priority_set(ev_perf, 1);
     event_priority_set(ev_recv, 3);
 
-    event_add(ev_recv, NULL);
+    event_add(ev_recv, &rc_tm);
     event_add(ev_perf, &perf_tm);
     /* Signal event to terminate event loop */
     event_add(evsig, NULL);
