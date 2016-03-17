@@ -23,15 +23,16 @@
 #define LEARNER_PORT 34952
 #define BUFSIZE 1470
 
-ProposerCtx *proposer_ctx_new(int verbose, int max_inst) {
+ProposerCtx *proposer_ctx_new(Config *conf) {
     ProposerCtx *ctx = malloc(sizeof(ProposerCtx));
-    ctx->verbose = verbose;
+    ctx->verbose = conf->verbose;
     ctx->mps = 0;
     ctx->avg_lat = 0.0;
-    ctx->max_inst = max_inst-1;
+    ctx->max_inst = conf->maxinst-1;
     ctx->cur_inst = 0;
+    ctx->enable_paxos = conf->enable_paxos;
     ctx->acked_packets = 0;
-    ctx->values = malloc(max_inst * sizeof(int));
+    ctx->values = malloc(conf->maxinst * sizeof(int));
     ctx->buffer = malloc(sizeof(Message));
     return ctx;
 }
@@ -76,29 +77,45 @@ void perf_cb(evutil_socket_t fd, short what, void *arg)
 void recv_cb(evutil_socket_t fd, short what, void *arg)
 {
     ProposerCtx *ctx = (ProposerCtx *) arg;
-    Message msg;
+    int64_t latency;
     struct sockaddr_in remote;
     socklen_t remote_len = sizeof(remote);
-    int n = recvfrom(fd, &msg, sizeof(msg), 0, (struct sockaddr *) &remote, &remote_len);
-    if (n < 0)
-      perror("ERROR in recvfrom");
 
-    unpack(&msg);
-
-    if (ctx->verbose) {
-        char buf[BUFSIZE];
-        message_to_string(msg, buf);
-        printf("%s" , buf);
-    }
-    ctx->mps++;
     struct timeval end, result;
     gettimeofday(&end, NULL);
-    if (timeval_subtract(&result, &end, &msg.ts) < 0) {
-        printf("Latency is negative");
+
+    if (ctx->enable_paxos) {
+        Message msg;
+        int n = recvfrom(fd, &msg, sizeof(msg), 0, (struct sockaddr *) &remote, &remote_len);
+        if (n < 0)
+          perror("ERROR in recvfrom");
+
+        unpack(&msg);
+
+        if (ctx->verbose) {
+            char buf[BUFSIZE];
+            message_to_string(msg, buf);
+            printf("%s" , buf);
+        }
+        if (timeval_subtract(&result, &end, &msg.ts) < 0) {
+            printf("Latency is negative");
+        }
+        latency = (int64_t) (result.tv_sec*1000000 + result.tv_usec);
+    } else {
+        struct timeval msg;
+        int n = recvfrom(fd, &msg, sizeof(msg), 0, (struct sockaddr *) &remote, &remote_len);
+        if (n < 0)
+          perror("ERROR in recvfrom");
+
+        if (timeval_subtract(&result, &end, &msg) < 0) {
+            printf("Latency is negative");
+        }
+        latency = (int64_t) (result.tv_sec*1000000 + result.tv_usec);
     }
-    int64_t latency = (int64_t) (result.tv_sec*1000000 + result.tv_usec);
+
     ctx->avg_lat += latency;
     ctx->acked_packets++;
+    ctx->mps++;
 
     if (ctx->acked_packets >= ctx->max_inst) {
         raise(SIGTERM);
@@ -111,26 +128,37 @@ void send_value(evutil_socket_t fd, void *arg)
 {
     ProposerCtx *ctx = (ProposerCtx *) arg;
     socklen_t serverlen = sizeof(*ctx->serveraddr);
-    Message msg;
-    msg.inst = 0;
-    msg.rnd = 1;
-    msg.vrnd = 0;
-    msg.acpid = 0;
-    msg.mstype = 0;
-    msg.value = 0x01 + ctx->cur_inst;
-    ctx->values[ctx->cur_inst] = msg.value;
 
-    gettimeofday(&msg.ts, NULL);
-    size_t msglen = sizeof(msg);
-    pack(&msg, ctx->buffer);
-    int n = sendto(fd, ctx->buffer, msglen, 0, (struct sockaddr*) ctx->serveraddr, serverlen);
-    if (n < 0)
-        perror("ERROR in sendto");
-    ctx->cur_inst++;
+    if (ctx->enable_paxos) {
+        Message msg;
+        msg.inst = 0;
+        msg.rnd = 1;
+        msg.vrnd = 0;
+        msg.acpid = 0;
+        msg.mstype = 0;
+        msg.value = 0x01 + ctx->cur_inst;
+        ctx->values[ctx->cur_inst] = msg.value;
+
+        gettimeofday(&msg.ts, NULL);
+        size_t msglen = sizeof(msg);
+        pack(&msg, ctx->buffer);
+        int n = sendto(fd, ctx->buffer, msglen, 0, (struct sockaddr*) ctx->serveraddr, serverlen);
+        if (n < 0)
+            perror("ERROR in sendto");
+        ctx->cur_inst++;
+    } else {
+        struct timeval msg;
+        gettimeofday(&msg, NULL);
+        int n = sendto(fd, &msg, sizeof(msg), 0, (struct sockaddr*) ctx->serveraddr, serverlen);
+        if (n < 0)
+            perror("ERROR in sendto");
+        ctx->cur_inst++;
+    }
+
 }
 
 int start_proposer(Config *conf) {
-    ProposerCtx *ctx = proposer_ctx_new(conf->verbose, conf->maxinst);
+    ProposerCtx *ctx = proposer_ctx_new(conf);
     ctx->base = event_base_new();
     event_base_priority_init(ctx->base, 4);
     struct hostent *server;

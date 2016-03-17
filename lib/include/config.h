@@ -9,6 +9,7 @@ typedef struct Config {
     int learner_port;
     int bufsize;
     int maxinst;
+    int enable_paxos;
     char server[64];
 } Config;
 

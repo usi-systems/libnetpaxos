@@ -46,6 +46,9 @@ Config *parse_conf(char *config_file) {
         else if (strcmp(key, "MAXINST") == 0) {
             conf->maxinst = atoi(value);
         }
+        else if (strcmp(key, "ENABLE_PAXOS") == 0) {
+            conf->enable_paxos = atoi(value);
+        }
     }
     fclose(fp);
     if (line)

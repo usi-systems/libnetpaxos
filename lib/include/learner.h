@@ -2,6 +2,7 @@
 #define _LEARNER_H
 #include <sys/types.h>
 #include <event2/event.h>
+#include "config.h"
 
 typedef struct LearnerCtx {
     struct event_base *base;
@@ -10,12 +11,13 @@ typedef struct LearnerCtx {
     int max_inst;
     int num_packets;
     int bufsize;
+    int enable_paxos;
     int64_t avg_lat;
     int *values;
 } LearnerCtx;
 
 int start_learner();
-LearnerCtx *learner_ctx_new(int verbose, int max_inst, int bufsize);
+LearnerCtx *learner_ctx_new(Config *conf);
 void learner_ctx_destroy(LearnerCtx *st);
 
 #endif
