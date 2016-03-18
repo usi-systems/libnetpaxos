@@ -12,7 +12,6 @@ typedef struct LearnerCtx {
     int num_packets;
     int bufsize;
     int enable_paxos;
-    int64_t avg_lat;
     int *values;
 } LearnerCtx;
 

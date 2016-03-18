@@ -13,7 +13,7 @@ typedef struct ProposerCtx {
     int acked_packets;
     int enable_paxos;
     int outstanding;
-    int64_t avg_lat;
+    double avg_lat;
     int *values;
     char *buffer;
 } ProposerCtx;

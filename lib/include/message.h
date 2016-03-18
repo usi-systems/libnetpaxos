@@ -1,7 +1,7 @@
 #ifndef _MESSAGE_H_
 #define _MESSAGE_H_
 #include <stdint.h>
-#include <sys/time.h>
+#include <time.h>
 
 typedef struct Message {
     uint32_t inst;
@@ -10,7 +10,7 @@ typedef struct Message {
     uint16_t acpid;
     uint16_t mstype;
     uint32_t value;
-    struct timeval ts;
+    struct timespec ts;
     char   junk[1400];
 } Message;
 

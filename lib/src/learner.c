@@ -19,7 +19,6 @@ LearnerCtx *learner_ctx_new(Config *conf) {
     LearnerCtx *ctx = malloc(sizeof(LearnerCtx));
     ctx->verbose = conf->verbose;
     ctx->mps = 0;
-    ctx->avg_lat = 0.0;
     ctx->max_inst = conf->maxinst - 1;
     ctx->num_packets = 0;
     ctx->bufsize = conf->bufsize;
@@ -50,59 +49,57 @@ void signal_handler(evutil_socket_t fd, short what, void *arg) {
 
 void monitor(evutil_socket_t fd, short what, void *arg) {
     LearnerCtx *ctx = (LearnerCtx *) arg;
-    if (ctx->avg_lat > 0) {
-        printf("%d,%.2f\n", ctx->mps, ((double) ctx->avg_lat) / ctx->mps);
-        ctx->mps = 0;
-        ctx->avg_lat = 0;
+    if ( ctx->mps ) {
+        printf("%d\n", ctx->mps);
     }
+    ctx->mps = 0;
 }
 
 void cb_func(evutil_socket_t fd, short what, void *arg)
 {
     LearnerCtx *ctx = (LearnerCtx *) arg;
-    struct timeval end, result;
+    struct timespec end, result;
     struct sockaddr_in remote;
     socklen_t remote_len = sizeof(remote);
-    int64_t latency;
+    double latency;
     if (ctx->enable_paxos) {
         Message msg;
         int n = recvfrom(fd, &msg, sizeof(msg), 0, (struct sockaddr *) &remote, &remote_len);
-        if (n < 0)
+        if (n < 0) {
           perror("ERROR in recvfrom");
+          return;
+        }
         char buf[ctx->bufsize];
         unpack(&msg);
         if (ctx->verbose) {
             message_to_string(msg, buf);
             printf("%s" , buf);
         }
-        gettimeofday(&end, NULL);
-        if (timeval_subtract(&result, &end, &msg.ts) < 0) {
-            printf("Latency is negative");
-        }
         ctx->values[msg.inst] = msg.value;
         size_t msglen = sizeof(msg);
         pack(&msg, buf);
         n = sendto(fd, buf, msglen, 0, (struct sockaddr*) &remote, remote_len);
-        if (n < 0)
+        if (n < 0) {
             perror("ERROR in sendto");
+            return;
+        }
     } else {
-        struct timeval msg;
+        struct timespec msg;
         int n = recvfrom(fd, &msg, sizeof(msg), 0, (struct sockaddr *) &remote, &remote_len);
-        if (n < 0)
-          perror("ERROR in recvfrom");
+        if (n < 0) {
+            perror("ERROR in recvfrom");
+            return;
+        }
 
-        gettimeofday(&end, NULL);
-        timeval_subtract(&result, &end, &msg);
         n = sendto(fd, &msg, sizeof(msg), 0, (struct sockaddr*) &remote, remote_len);
-        if (n < 0)
+        if (n < 0) {
             perror("ERROR in sendto");
+            return;
+        }
     }
 
     ctx->mps++;
     ctx->num_packets++;
-    latency = (int64_t) (result.tv_sec*1000000 + result.tv_usec);
-    ctx->avg_lat += latency;
-    // Echo the received message
 
     if (ctx->num_packets == ctx->max_inst) {
         raise(SIGTERM);
@@ -116,6 +113,7 @@ int start_learner(Config *conf) {
     int fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (fd < 0) {
         perror("cannot create socket");
+        return EXIT_FAILURE;
     }
 
     struct sockaddr_in serv_addr;
@@ -123,8 +121,10 @@ int start_learner(Config *conf) {
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_port = htons(conf->learner_port);
     serv_addr.sin_addr.s_addr = INADDR_ANY;
-    if (bind(fd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
+    if (bind(fd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
         perror("ERROR on binding");
+        return EXIT_FAILURE;
+    }
     struct event *recv_ev, *monitor_ev, *evsig;
     recv_ev = event_new(ctx->base, fd, EV_READ|EV_PERSIST, cb_func, ctx);
     struct timeval timeout = {1, 0};
@@ -140,5 +140,5 @@ int start_learner(Config *conf) {
     event_add(evsig, NULL);
 
     event_base_dispatch(ctx->base);
-    return 0;
+    return EXIT_SUCCESS;
 }

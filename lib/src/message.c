@@ -18,7 +18,7 @@ void message_to_string(Message m, char *str) {
         "value:    %.8x\n",
         m.mstype, m.inst, m.rnd, m.vrnd,
         m.acpid,
-        (long long)m.ts.tv_sec, m.ts.tv_usec,
+        (long long)m.ts.tv_sec, m.ts.tv_nsec,
         m.value);
 }
 
