@@ -21,5 +21,5 @@ typedef struct ProposerCtx {
 int start_proposer();
 ProposerCtx *proposer_ctx_new(Config *conf);
 void proposer_ctx_destroy(ProposerCtx *st);
-void send_value(evutil_socket_t fd, void *arg);
+void send_value(evutil_socket_t fd, short what, void *arg);
 #endif

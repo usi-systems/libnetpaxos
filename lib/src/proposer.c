@@ -123,14 +123,10 @@ void recv_cb(evutil_socket_t fd, short what, void *arg)
             raise(SIGTERM);
         }
     }
-    else if (what&EV_TIMEOUT) {
-        fprintf(stderr, "Receive timeout\n");
-    }
-    send_value(fd, ctx);
 }
 
 
-void send_value(evutil_socket_t fd, void *arg)
+void send_value(evutil_socket_t fd, short what, void *arg)
 {
     ProposerCtx *ctx = (ProposerCtx *) arg;
     socklen_t serverlen = sizeof(*ctx->serveraddr);
@@ -187,9 +183,8 @@ int start_proposer(Config *conf) {
     bcopy((char *)server->h_addr,
       (char *)&(ctx->serveraddr->sin_addr.s_addr), server->h_length);
     ctx->serveraddr->sin_port = htons(LEARNER_PORT);
-    struct event *ev_recv, *ev_send, *ev_perf, *evsig;
+    struct event *ev_recv, *ev_perf, *evsig;
     struct timeval perf_tm = {1, 0};
-    struct timeval rc_tm =   {1, 333333};
     ev_recv = event_new(ctx->base, fd, EV_READ|EV_PERSIST, recv_cb, ctx);
     ev_perf = event_new(ctx->base, -1, EV_TIMEOUT|EV_PERSIST, perf_cb, ctx);
     evsig = evsignal_new(ctx->base, SIGTERM, proposer_signal_handler, ctx);
@@ -198,14 +193,24 @@ int start_proposer(Config *conf) {
     event_priority_set(ev_perf, 1);
     event_priority_set(ev_recv, 3);
 
-    event_add(ev_recv, &rc_tm);
+    event_add(ev_recv, NULL);
     event_add(ev_perf, &perf_tm);
     /* Signal event to terminate event loop */
     event_add(evsig, NULL);
 
+
+    struct timeval send_interval = { conf->second, conf->microsecond };
+    struct timeval tv_in = { conf->second, conf->microsecond };
+    const struct timeval *tv_out;
+    tv_out = event_base_init_common_timeout(ctx->base, &tv_in);
+    memcpy(&send_interval, tv_out, sizeof(struct timeval));
     int i = 0;
-    for (i; i < ctx->outstanding; i++)
-        send_value(fd, ctx);
+    for (i; i < ctx->outstanding; i++) {
+        struct event *ev_send;
+        ev_send = event_new(ctx->base, fd, EV_TIMEOUT|EV_PERSIST, send_value, ctx);
+        event_priority_set(ev_send, 2);
+        event_add(ev_send, &send_interval);
+    }
 
     event_base_dispatch(ctx->base);
     close(fd);

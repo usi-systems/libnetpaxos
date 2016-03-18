@@ -3,7 +3,7 @@
 
 typedef struct Config {
     int role;
-    int minute;
+    int second;
     int microsecond;
     int verbose;
     int learner_port;
