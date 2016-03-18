@@ -32,6 +32,7 @@ ProposerCtx *proposer_ctx_new(Config *conf) {
     ctx->cur_inst = 0;
     ctx->enable_paxos = conf->enable_paxos;
     ctx->acked_packets = 0;
+    ctx->outstanding = conf->outstanding;
     ctx->values = malloc(conf->maxinst * sizeof(int));
     ctx->buffer = malloc(sizeof(Message));
     return ctx;
@@ -77,10 +78,7 @@ void perf_cb(evutil_socket_t fd, short what, void *arg)
 void recv_cb(evutil_socket_t fd, short what, void *arg)
 {
     ProposerCtx *ctx = (ProposerCtx *) arg;
-    if (what&EV_TIMEOUT) {
-        printf("event timeout called\n");
-        send_value(fd, ctx);
-    } else {
+    if (what&EV_READ) {
         int64_t latency;
         struct sockaddr_in remote;
         socklen_t remote_len = sizeof(remote);
@@ -102,7 +100,7 @@ void recv_cb(evutil_socket_t fd, short what, void *arg)
                 printf("%s" , buf);
             }
             if (timeval_subtract(&result, &end, &msg.ts) < 0) {
-                printf("Latency is negative");
+                fprintf(stderr, "Latency is negative\n");
             }
             latency = (int64_t) (result.tv_sec*1000000 + result.tv_usec);
         } else {
@@ -112,7 +110,7 @@ void recv_cb(evutil_socket_t fd, short what, void *arg)
               perror("ERROR in recvfrom");
 
             if (timeval_subtract(&result, &end, &msg) < 0) {
-                printf("Latency is negative");
+                fprintf(stderr, "Latency is negative\n");
             }
             latency = (int64_t) (result.tv_sec*1000000 + result.tv_usec);
         }
@@ -123,10 +121,12 @@ void recv_cb(evutil_socket_t fd, short what, void *arg)
 
         if (ctx->acked_packets >= ctx->max_inst) {
             raise(SIGTERM);
-        } else {
-            send_value(fd, ctx);
         }
     }
+    else if (what&EV_TIMEOUT) {
+        fprintf(stderr, "Receive timeout\n");
+    }
+    send_value(fd, ctx);
 }
 
 
@@ -189,7 +189,7 @@ int start_proposer(Config *conf) {
     ctx->serveraddr->sin_port = htons(LEARNER_PORT);
     struct event *ev_recv, *ev_send, *ev_perf, *evsig;
     struct timeval perf_tm = {1, 0};
-    struct timeval rc_tm =   {0, 104729};
+    struct timeval rc_tm =   {1, 333333};
     ev_recv = event_new(ctx->base, fd, EV_READ|EV_PERSIST, recv_cb, ctx);
     ev_perf = event_new(ctx->base, -1, EV_TIMEOUT|EV_PERSIST, perf_cb, ctx);
     evsig = evsignal_new(ctx->base, SIGTERM, proposer_signal_handler, ctx);
@@ -203,7 +203,9 @@ int start_proposer(Config *conf) {
     /* Signal event to terminate event loop */
     event_add(evsig, NULL);
 
-    send_value(fd, ctx);
+    int i = 0;
+    for (i; i < ctx->outstanding; i++)
+        send_value(fd, ctx);
 
     event_base_dispatch(ctx->base);
     close(fd);

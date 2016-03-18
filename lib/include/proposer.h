@@ -12,6 +12,7 @@ typedef struct ProposerCtx {
     int max_inst;
     int acked_packets;
     int enable_paxos;
+    int outstanding;
     int64_t avg_lat;
     int *values;
     char *buffer;
