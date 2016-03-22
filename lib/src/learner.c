@@ -5,6 +5,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <event2/event.h>
+#include <string.h>
 #include <strings.h>
 #include <inttypes.h>
 #include <signal.h>
@@ -13,7 +14,6 @@
 #include "learner.h"
 #include "netpaxos_utils.h"
 #include "config.h"
-
 /* Here's a callback function that calls loop break */
 LearnerCtx *learner_ctx_new(Config conf) {
     LearnerCtx *ctx = malloc(sizeof(LearnerCtx));
@@ -21,10 +21,18 @@ LearnerCtx *learner_ctx_new(Config conf) {
     ctx->mps = 0;
     ctx->num_packets = 0;
     ctx->values = malloc(conf.maxinst * sizeof(int));
+    if (ctx->values == NULL) {
+        perror("Unable to allocate memory for values\n");
+    }
+    ctx->buffer = malloc(conf.bufsize);
+    if (ctx->buffer == NULL) {
+        perror("Unable to allocate memory for buffer\n");
+    }
     return ctx;
 }
 
 void learner_ctx_destroy(LearnerCtx *ctx) {
+    free(ctx->buffer);
     free(ctx->values);
     free(ctx);
 }
@@ -59,35 +67,39 @@ void cb_func(evutil_socket_t fd, short what, void *arg)
     struct sockaddr_in remote;
     socklen_t remote_len = sizeof(remote);
     double latency;
+    size_t msglen;
+    int n;
     if (ctx->conf.enable_paxos) {
         Message msg;
-        int n = recvfrom(fd, &msg, sizeof(msg), 0, (struct sockaddr *) &remote, &remote_len);
+        n = recvfrom(fd, &msg, sizeof(msg), 0, (struct sockaddr *) &remote, &remote_len);
         if (n < 0) {
           perror("ERROR in recvfrom");
           return;
         }
-        char buf[ctx->conf.bufsize];
         unpack(&msg);
         if (ctx->conf.verbose) {
-            message_to_string(msg, buf);
-            printf("%s" , buf);
+            message_to_string(msg, ctx->buffer);
+            printf("%s" , ctx->buffer);
+        }
+        if (msg.inst >= ctx->conf.maxinst) {
+            return;
         }
         ctx->values[msg.inst] = msg.value;
-        size_t msglen = sizeof(msg);
-        pack(&msg, buf);
-        n = sendto(fd, buf, msglen, 0, (struct sockaddr*) &remote, remote_len);
+        pack(&msg, ctx->buffer);
+        msglen = sizeof(Message);
+        n = sendto(fd, ctx->buffer, msglen, 0, (struct sockaddr*) &remote, remote_len);
         if (n < 0) {
             perror("ERROR in sendto");
             return;
         }
+
     } else {
-        struct timespec msg;
-        int n = recvfrom(fd, &msg, sizeof(msg), 0, (struct sockaddr *) &remote, &remote_len);
+        TimespecMessage msg;
+        n = recvfrom(fd, &msg, sizeof(msg), 0, (struct sockaddr *) &remote, &remote_len);
         if (n < 0) {
             perror("ERROR in recvfrom");
             return;
         }
-
         n = sendto(fd, &msg, sizeof(msg), 0, (struct sockaddr*) &remote, remote_len);
         if (n < 0) {
             perror("ERROR in sendto");

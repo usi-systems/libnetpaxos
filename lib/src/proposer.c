@@ -29,7 +29,7 @@ ProposerCtx *proposer_ctx_new(Config conf) {
     ctx->avg_lat = 0.0;
     ctx->cur_inst = 0;
     ctx->acked_packets = 0;
-    ctx->values = malloc(ctx->conf.maxinst * sizeof(int));
+    ctx->values = malloc(conf.maxinst * sizeof(int));
     ctx->buffer = malloc(sizeof(Message));
     return ctx;
 }
@@ -81,7 +81,7 @@ void recv_cb(evutil_socket_t fd, short what, void *arg)
         struct sockaddr_in remote;
         socklen_t remote_len = sizeof(remote);
 
-        struct timespec end, result;
+        struct timespec start, end, result;
         clock_gettime(CLOCK_MONOTONIC, &end);
 
         if (ctx->conf.enable_paxos) {
@@ -91,33 +91,25 @@ void recv_cb(evutil_socket_t fd, short what, void *arg)
               perror("ERROR in recvfrom");
               return;
             }
-
             unpack(&msg);
-
             if (ctx->conf.verbose) {
-                char buf[BUFSIZE];
-                message_to_string(msg, buf);
-                printf("%s" , buf);
+                message_to_string(msg, ctx->buffer);
+                printf("%s" , ctx->buffer);
             }
-            if (timediff(&result, &end, &msg.ts) == 1) {
-                fprintf(stderr, "Latency is negative\n");
-                return;
-            }
-            latency = (result.tv_sec + ((double)result.tv_nsec) / 1e9);
+            start = msg.ts;
         } else {
-            struct timespec msg;
+            TimespecMessage msg;
             int n = recvfrom(fd, &msg, sizeof(msg), 0, (struct sockaddr *) &remote, &remote_len);
             if (n < 0) {
               perror("ERROR in recvfrom");
               return;
             }
-
-            if (timediff(&result, &end, &msg) == 1) {
-                fprintf(stderr, "Latency is negative\n");
-            }
-            latency = (result.tv_sec + ((double)result.tv_nsec) / 1e9);
+            start = msg.ts;
         }
-
+        if (timediff(&result, &end, &start) == 1) {
+            fprintf(stderr, "Latency is negative\n");
+        }
+        latency = (result.tv_sec + ((double)result.tv_nsec) / 1e9);
         ctx->avg_lat += latency;
         ctx->acked_packets++;
         ctx->mps++;
@@ -133,9 +125,11 @@ void send_value(evutil_socket_t fd, short what, void *arg)
 {
     ProposerCtx *ctx = (ProposerCtx *) arg;
     socklen_t serverlen = sizeof(*ctx->serveraddr);
-
+    size_t msglen;
+    int n;
     if (ctx->conf.enable_paxos) {
         Message msg;
+        msglen = sizeof(Message);
         msg.mstype = 0;
         if (ctx->conf.reset_paxos) {
             msg.mstype = 255;
@@ -144,28 +138,30 @@ void send_value(evutil_socket_t fd, short what, void *arg)
         msg.rnd = 1;
         msg.vrnd = 0;
         msg.acpid = 0;
-        msg.value = 0x01 + ctx->cur_inst;
+        msg.value = ctx->cur_inst;
+        if (ctx->cur_inst >= ctx->conf.maxinst) {
+            return;
+        }
         ctx->values[ctx->cur_inst] = msg.value;
-
         clock_gettime(CLOCK_MONOTONIC, &msg.ts);
-        size_t msglen = sizeof(msg);
         pack(&msg, ctx->buffer);
-        int n = sendto(fd, ctx->buffer, msglen, 0, (struct sockaddr*) ctx->serveraddr, serverlen);
+        n = sendto(fd, ctx->buffer, msglen, 0, (struct sockaddr*) ctx->serveraddr, serverlen);
         if (n < 0) {
             perror("ERROR in sendto");
             return;
         }
-        ctx->cur_inst++;
     } else {
-        struct timespec msg;
-        clock_gettime(CLOCK_MONOTONIC, &msg);
-        int n = sendto(fd, &msg, sizeof(msg), 0, (struct sockaddr*) ctx->serveraddr, serverlen);
+        TimespecMessage msg;
+        msglen = sizeof(TimespecMessage);
+        clock_gettime(CLOCK_MONOTONIC, &(msg.ts));
+        n = sendto(fd, &msg, msglen, 0, (struct sockaddr*) ctx->serveraddr, serverlen);
         if (n < 0) {
             perror("ERROR in sendto");
             return;
         }
-        ctx->cur_inst++;
     }
+
+    ctx->cur_inst++;
 }
 
 int start_proposer(Config *conf) {

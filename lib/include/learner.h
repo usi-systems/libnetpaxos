@@ -10,6 +10,7 @@ typedef struct LearnerCtx {
     int mps;
     int num_packets;
     int *values;
+    char *buffer;
 } LearnerCtx;
 
 int start_learner();
