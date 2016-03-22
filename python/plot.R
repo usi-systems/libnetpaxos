@@ -20,10 +20,11 @@ readLatency <- function(x) {
     return(df)
 }
 
-readLatenC <- function(x) {
+readThroughputLatency <- function(x) {
     print(x)
     df <- read.csv(x, col.names=c('throughput','latency'))
     df <- df[c('latency')]
+    df$latency <- df$latency * 10^6  # Microsecond
     fname <- basename(file_path_sans_ext(x))
     title <- strsplit(fname, "-")
     device_name <- title[[1]][1]
@@ -47,17 +48,17 @@ plot_box <- function(data) {
     pdf("boxplot.pdf")
     ggplot(data, aes(device, latency)) +
     geom_boxplot() +
+    ylab("latency (us)") +
     ggtitle("boxplot latency")
 }
 
 args <- commandArgs(TRUE)
 
 data <- data.frame(device=character(), trial=character(),latency=numeric())
-fwd <- readLatency(args[1]) # data for simply forwarding packets
-pax <- readLatenC(args[2])  # data for Paxos application
-data <- rbind(data, fwd)
-data <- rbind(data, pax)
-print(tail(data))
+for (i in args) {
+    df <- readThroughputLatency(i)
+    data <- rbind(data, df)
+}
 
 plot_cdf(data)
 plot_box(data)
