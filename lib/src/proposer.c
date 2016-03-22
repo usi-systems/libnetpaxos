@@ -22,17 +22,14 @@
 
 #define BUFSIZE 1470
 
-ProposerCtx *proposer_ctx_new(Config *conf) {
+ProposerCtx *proposer_ctx_new(Config conf) {
     ProposerCtx *ctx = malloc(sizeof(ProposerCtx));
-    ctx->verbose = conf->verbose;
+    ctx->conf = conf;
     ctx->mps = 0;
     ctx->avg_lat = 0.0;
-    ctx->max_inst = conf->maxinst-1;
     ctx->cur_inst = 0;
-    ctx->enable_paxos = conf->enable_paxos;
     ctx->acked_packets = 0;
-    ctx->outstanding = conf->outstanding;
-    ctx->values = malloc(conf->maxinst * sizeof(int));
+    ctx->values = malloc(ctx->conf.maxinst * sizeof(int));
     ctx->buffer = malloc(sizeof(Message));
     return ctx;
 }
@@ -87,7 +84,7 @@ void recv_cb(evutil_socket_t fd, short what, void *arg)
         struct timespec end, result;
         clock_gettime(CLOCK_MONOTONIC, &end);
 
-        if (ctx->enable_paxos) {
+        if (ctx->conf.enable_paxos) {
             Message msg;
             int n = recvfrom(fd, &msg, sizeof(msg), 0, (struct sockaddr *) &remote, &remote_len);
             if (n < 0) {
@@ -97,7 +94,7 @@ void recv_cb(evutil_socket_t fd, short what, void *arg)
 
             unpack(&msg);
 
-            if (ctx->verbose) {
+            if (ctx->conf.verbose) {
                 char buf[BUFSIZE];
                 message_to_string(msg, buf);
                 printf("%s" , buf);
@@ -125,7 +122,7 @@ void recv_cb(evutil_socket_t fd, short what, void *arg)
         ctx->acked_packets++;
         ctx->mps++;
 
-        if (ctx->acked_packets >= ctx->max_inst) {
+        if (ctx->acked_packets >= ctx->conf.maxinst) {
             raise(SIGTERM);
         }
     }
@@ -137,13 +134,16 @@ void send_value(evutil_socket_t fd, short what, void *arg)
     ProposerCtx *ctx = (ProposerCtx *) arg;
     socklen_t serverlen = sizeof(*ctx->serveraddr);
 
-    if (ctx->enable_paxos) {
+    if (ctx->conf.enable_paxos) {
         Message msg;
+        msg.mstype = 0;
+        if (ctx->conf.reset_paxos) {
+            msg.mstype = 255;
+        }
         msg.inst = 0;
         msg.rnd = 1;
         msg.vrnd = 0;
         msg.acpid = 0;
-        msg.mstype = 0;
         msg.value = 0x01 + ctx->cur_inst;
         ctx->values[ctx->cur_inst] = msg.value;
 
@@ -169,7 +169,7 @@ void send_value(evutil_socket_t fd, short what, void *arg)
 }
 
 int start_proposer(Config *conf) {
-    ProposerCtx *ctx = proposer_ctx_new(conf);
+    ProposerCtx *ctx = proposer_ctx_new(*conf);
     ctx->base = event_base_new();
     event_base_priority_init(ctx->base, 4);
     struct hostent *server;
@@ -194,6 +194,7 @@ int start_proposer(Config *conf) {
     bcopy((char *)server->h_addr,
       (char *)&(ctx->serveraddr->sin_addr.s_addr), server->h_length);
     ctx->serveraddr->sin_port = htons(conf->learner_port);
+
     struct event *ev_recv, *ev_perf, *evsig;
     struct timeval perf_tm = {1, 0};
     ev_recv = event_new(ctx->base, fd, EV_READ|EV_PERSIST, recv_cb, ctx);
@@ -214,7 +215,7 @@ int start_proposer(Config *conf) {
     tv_out = event_base_init_common_timeout(ctx->base, &tv_in);
     memcpy(&send_interval, tv_out, sizeof(struct timeval));
     int i = 0;
-    for (i; i < ctx->outstanding; i++) {
+    for (i; i < conf->outstanding; i++) {
         struct event *ev_send;
         ev_send = event_new(ctx->base, fd, EV_TIMEOUT|EV_PERSIST, send_value, ctx);
         event_priority_set(ev_send, 2);

@@ -15,15 +15,12 @@
 #include "config.h"
 
 /* Here's a callback function that calls loop break */
-LearnerCtx *learner_ctx_new(Config *conf) {
+LearnerCtx *learner_ctx_new(Config conf) {
     LearnerCtx *ctx = malloc(sizeof(LearnerCtx));
-    ctx->verbose = conf->verbose;
+    ctx->conf = conf;
     ctx->mps = 0;
-    ctx->max_inst = conf->maxinst - 1;
     ctx->num_packets = 0;
-    ctx->bufsize = conf->bufsize;
-    ctx->enable_paxos = conf->enable_paxos;
-    ctx->values = malloc(conf->maxinst * sizeof(int));
+    ctx->values = malloc(conf.maxinst * sizeof(int));
     return ctx;
 }
 
@@ -38,7 +35,7 @@ void signal_handler(evutil_socket_t fd, short what, void *arg) {
         event_base_loopbreak(ctx->base);
         FILE *fp = fopen("learner.txt", "w+");
         int i;
-        for (i = 0; i <= ctx->max_inst; i++) {
+        for (i = 0; i <= ctx->conf.maxinst; i++) {
             fprintf(fp, "%d\n", ctx->values[i]);
         }
         fprintf(fp, "num_packets: %d\n", ctx->num_packets);
@@ -62,16 +59,16 @@ void cb_func(evutil_socket_t fd, short what, void *arg)
     struct sockaddr_in remote;
     socklen_t remote_len = sizeof(remote);
     double latency;
-    if (ctx->enable_paxos) {
+    if (ctx->conf.enable_paxos) {
         Message msg;
         int n = recvfrom(fd, &msg, sizeof(msg), 0, (struct sockaddr *) &remote, &remote_len);
         if (n < 0) {
           perror("ERROR in recvfrom");
           return;
         }
-        char buf[ctx->bufsize];
+        char buf[ctx->conf.bufsize];
         unpack(&msg);
-        if (ctx->verbose) {
+        if (ctx->conf.verbose) {
             message_to_string(msg, buf);
             printf("%s" , buf);
         }
@@ -101,13 +98,13 @@ void cb_func(evutil_socket_t fd, short what, void *arg)
     ctx->mps++;
     ctx->num_packets++;
 
-    if (ctx->num_packets == ctx->max_inst) {
+    if (ctx->num_packets == ctx->conf.maxinst) {
         raise(SIGTERM);
     }
 }
 
 int start_learner(Config *conf) {
-    LearnerCtx *ctx = learner_ctx_new(conf);
+    LearnerCtx *ctx = learner_ctx_new(*conf);
     ctx->base = event_base_new();
     event_base_priority_init(ctx->base, 4);
     int fd = socket(AF_INET, SOCK_DGRAM, 0);

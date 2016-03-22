@@ -10,6 +10,7 @@ typedef struct Config {
     int bufsize;
     int maxinst;
     int enable_paxos;
+    int reset_paxos;
     int outstanding;
     char server[64];
 } Config;

@@ -6,17 +6,14 @@
 
 typedef struct LearnerCtx {
     struct event_base *base;
-    int verbose;
+    Config conf;
     int mps;
-    int max_inst;
     int num_packets;
-    int bufsize;
-    int enable_paxos;
     int *values;
 } LearnerCtx;
 
 int start_learner();
-LearnerCtx *learner_ctx_new(Config *conf);
+LearnerCtx *learner_ctx_new(Config conf);
 void learner_ctx_destroy(LearnerCtx *st);
 
 #endif
