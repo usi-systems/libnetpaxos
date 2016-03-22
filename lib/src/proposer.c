@@ -31,13 +31,19 @@ ProposerCtx *proposer_ctx_new(Config conf) {
     ctx->acked_packets = 0;
     ctx->values = malloc(conf.maxinst * sizeof(int));
     ctx->buffer = malloc(sizeof(Message));
+    char fname[32];
+    int n = snprintf(fname, sizeof fname, "proposer%d.txt", getpid());
+    if ( n < 0 || n >= sizeof fname )
+        exit(EXIT_FAILURE);
+    ctx->fp = fopen(fname, "w+");
     return ctx;
 }
 
-void proposer_ctx_destroy(ProposerCtx *st) {
-    free(st->buffer);
-    free(st->values);
-    free(st);
+void proposer_ctx_destroy(ProposerCtx *ctx) {
+    fclose(ctx->fp);
+    free(ctx->buffer);
+    free(ctx->values);
+    free(ctx);
 }
 
 
@@ -45,18 +51,12 @@ void proposer_signal_handler(evutil_socket_t fd, short what, void *arg) {
     ProposerCtx *ctx = (ProposerCtx *) arg;
     if (what&EV_SIGNAL) {
         event_base_loopbreak(ctx->base);
-        char fname[32];
-        int n = snprintf(fname, sizeof fname, "proposer%d.txt", getpid());
-        if ( n < 0 || n >= sizeof fname )
-            exit(EXIT_FAILURE);
-        FILE *fp = fopen(fname, "w+");
         // int i;
         // for (i = 0; i < ctx->max_inst; i++) {
         //     fprintf(ctx->fp, "%d\n", ctx->values[i]);
         // }
-        fprintf(fp, "sent_inst: %d\n", ctx->cur_inst);
-        fprintf(fp, "acked_packets: %d\n", ctx->acked_packets);
-        fclose(fp);
+        fprintf(stdout, "sent_inst: %d\n", ctx->cur_inst);
+        fprintf(stdout, "acked_packets: %d\n", ctx->acked_packets);
         proposer_ctx_destroy(ctx);
 
     }
@@ -67,7 +67,7 @@ void perf_cb(evutil_socket_t fd, short what, void *arg)
 {
     ProposerCtx *ctx = (ProposerCtx *) arg;
     if ( ctx->mps ) {
-        printf("%d,%.6f\n", ctx->mps, (ctx->avg_lat / ctx->mps));
+        fprintf(stdout, "%d,%.6f\n", ctx->mps, (ctx->avg_lat / ctx->mps));
     }
     ctx->mps = 0;
     ctx->avg_lat = 0;
@@ -110,6 +110,7 @@ void recv_cb(evutil_socket_t fd, short what, void *arg)
             fprintf(stderr, "Latency is negative\n");
         }
         latency = (result.tv_sec + ((double)result.tv_nsec) / 1e9);
+        fprintf(ctx->fp, "%.9f\n", latency);
         ctx->avg_lat += latency;
         ctx->acked_packets++;
         ctx->mps++;
