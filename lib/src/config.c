@@ -25,6 +25,9 @@ Config *parse_conf(char *config_file) {
         if (strcmp(key, "ROLE") == 0) {
             conf->role = atoi(value);
         }
+        else if (strcmp(key, "//") == 0) {
+            continue;
+        }
         else if (strcmp(key, "VERBOSE") == 0) {
             conf->verbose = atoi(value);
         }
