@@ -90,13 +90,15 @@ void recv_cb(evutil_socket_t fd, short what, void *arg)
               return;
             }
             unpack(&msg);
+            uint32_t hi_part = (msg.end_high - msg.start_high);
+            uint32_t low_part = msg.end_low - msg.start_low;
             if (ctx->conf.verbose) {
                 message_to_string(msg, ctx->buffer);
-                printf("%s" , ctx->buffer);
+                fprintf(stdout, "%s" , ctx->buffer);
             }
             start = msg.ts;
-            cycles = (msg.end_high - msg.start_high)<<32 + (msg.end_low - msg.start_low);
-
+            cycles = ((cycles + hi_part) << 32) + low_part;
+            fprintf(stdout, "%d %d %ld\n", hi_part, low_part, cycles);
         } else {
             TimespecMessage msg;
             int n = recvfrom(fd, &msg, sizeof(msg), 0, (struct sockaddr *) &remote, &remote_len);
