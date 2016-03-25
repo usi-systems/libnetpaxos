@@ -15,8 +15,7 @@ typedef struct Message {
     uint32_t end_high;
     uint32_t end_low;
     struct timespec ts;
-
-    char   junk[1440];
+    char   junk[1300];
 } Message;
 
 typedef struct TimespecMessage {
