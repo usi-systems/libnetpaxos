@@ -139,6 +139,10 @@ void send_value(evutil_socket_t fd, short what, void *arg)
         msg.rnd = 1;
         msg.vrnd = 0;
         msg.acpid = 0;
+        msg.start_high = 0;
+        msg.start_low = 0;
+        msg.end_high = 0;
+        msg.end_low = 0;
         msg.value = ctx->cur_inst;
         if (ctx->cur_inst >= ctx->conf.maxinst) {
             return;
