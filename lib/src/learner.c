@@ -20,11 +20,15 @@ LearnerCtx *learner_ctx_new(Config conf) {
     ctx->conf = conf;
     ctx->mps = 0;
     ctx->num_packets = 0;
-    ctx->values = malloc(conf.maxinst * sizeof(int));
+    ctx->values = malloc(ctx->conf.maxinst * sizeof(int));
+    int i;
+    for (i = 0; i < ctx->conf.maxinst; i++) {
+        ctx->values[i] = 0;
+    }
     if (ctx->values == NULL) {
         perror("Unable to allocate memory for values\n");
     }
-    ctx->buffer = malloc(conf.bufsize);
+    ctx->buffer = malloc(conf.bufsize + 1);
     if (ctx->buffer == NULL) {
         perror("Unable to allocate memory for buffer\n");
     }
@@ -43,11 +47,12 @@ void signal_handler(evutil_socket_t fd, short what, void *arg) {
         event_base_loopbreak(ctx->base);
         FILE *fp = fopen("learner.txt", "w+");
         int i;
-        for (i = 0; i <= ctx->conf.maxinst; i++) {
+        for (i = 0; i < ctx->conf.maxinst; i++) {
             fprintf(fp, "%d\n", ctx->values[i]);
         }
         fprintf(fp, "num_packets: %d\n", ctx->num_packets);
-        fclose(fp);
+        if (fclose(fp) != 0)
+            perror("Close file error");
         learner_ctx_destroy(ctx);
     }
 }

@@ -20,8 +20,6 @@
 #include "netpaxos_utils.h"
 #include "config.h"
 
-#define BUFSIZE 1470
-
 ProposerCtx *proposer_ctx_new(Config conf) {
     ProposerCtx *ctx = malloc(sizeof(ProposerCtx));
     ctx->conf = conf;
@@ -80,7 +78,7 @@ void recv_cb(evutil_socket_t fd, short what, void *arg)
         double latency;
         struct sockaddr_in remote;
         socklen_t remote_len = sizeof(remote);
-
+        uint64_t cycles = 0;
         struct timespec start, end, result;
         clock_gettime(CLOCK_MONOTONIC, &end);
 
@@ -97,6 +95,8 @@ void recv_cb(evutil_socket_t fd, short what, void *arg)
                 printf("%s" , ctx->buffer);
             }
             start = msg.ts;
+            cycles = (msg.end_high - msg.start_high)<<32 + (msg.end_low - msg.start_low);
+
         } else {
             TimespecMessage msg;
             int n = recvfrom(fd, &msg, sizeof(msg), 0, (struct sockaddr *) &remote, &remote_len);
@@ -110,7 +110,7 @@ void recv_cb(evutil_socket_t fd, short what, void *arg)
             fprintf(stderr, "Latency is negative\n");
         }
         latency = (result.tv_sec + ((double)result.tv_nsec) / 1e9);
-        fprintf(ctx->fp, "%.9f\n", latency);
+        fprintf(ctx->fp, "%.9f,%ld\n", latency, cycles);
         ctx->avg_lat += latency;
         ctx->acked_packets++;
         ctx->mps++;
