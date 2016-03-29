@@ -55,8 +55,8 @@ Config *parse_conf(char *config_file) {
         else if (strcmp(key, "OUTSTANDING") == 0) {
             conf->outstanding = atoi(value);
         }
-        else if (strcmp(key, "RESET_PAXOS") == 0) {
-            conf->reset_paxos = atoi(value);
+        else if (strcmp(key, "PAXOS_MSGTYPE") == 0) {
+            conf->paxos_msgtype = atoi(value);
         }
     }
     fclose(fp);

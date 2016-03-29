@@ -27,7 +27,7 @@ void message_to_string(Message m, char *str) {
         "asl:      %.8x\t"
         "aeh:      %.8x\t"
         "ael:      %.8x\n",
-        m.mstype, m.inst, m.rnd, m.vrnd, m.acpid, m.value,
+        m.msgtype, m.inst, m.rnd, m.vrnd, m.acpid, m.value,
         m.fsh, m.fsl, m.feh, m.fel,
         m.csh, m.csl, m.ceh, m.cel,
         m.ash, m.asl, m.aeh, m.ael);
@@ -39,7 +39,7 @@ size_t pack(const Message *msg, char *buf) {
     s.rnd = htons(msg->rnd);
     s.vrnd = htons(msg->vrnd);
     s.acpid = htons(msg->acpid);
-    s.mstype = htons(msg->mstype);
+    s.msgtype = htons(msg->msgtype);
     s.value = htonl(msg->value);
     s.fsh = htonl(msg->fsh);
     s.fsl = htonl(msg->fsl);
@@ -63,7 +63,7 @@ void unpack(Message *m) {
     m->rnd = ntohs(m->rnd);
     m->vrnd = ntohs(m->vrnd);
     m->acpid = ntohs(m->acpid);
-    m->mstype = ntohs(m->mstype);
+    m->msgtype = ntohs(m->msgtype);
     m->value = ntohl(m->value);
     m->fsh = ntohl(m->fsh);
     m->fsl = ntohl(m->fsl);
@@ -77,4 +77,25 @@ void unpack(Message *m) {
     m->asl = ntohl(m->asl);
     m->aeh = ntohl(m->aeh);
     m->ael = ntohl(m->ael);
+}
+
+void initialize_message(Message *m, int msgtype, int val) {
+    m->inst     = 0;
+    m->rnd      = 0;
+    m->vrnd     = 0;
+    m->acpid    = 0;
+    m->msgtype  = msgtype;
+    m->value    = val;
+    m->fsh      = 0;
+    m->fsl      = 0;
+    m->feh      = 0;
+    m->fel      = 0;
+    m->csh      = 0;
+    m->csl      = 0;
+    m->ceh      = 0;
+    m->cel      = 0;
+    m->ash      = 0;
+    m->asl      = 0;
+    m->aeh      = 0;
+    m->ael      = 0;
 }

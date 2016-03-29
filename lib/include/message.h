@@ -8,7 +8,7 @@ typedef struct Message {
     uint16_t rnd;
     uint16_t vrnd;
     uint16_t acpid;
-    uint16_t mstype;
+    uint16_t msgtype;
     uint32_t value;
     uint32_t fsh;
     uint32_t fsl;
@@ -35,5 +35,5 @@ typedef struct TimespecMessage {
 void message_to_string(Message m, char *str);
 size_t pack(const Message *msg, char *buf);
 void unpack(Message *m);
-
+void initialize_message(Message *m, int msgtype, int val);
 #endif

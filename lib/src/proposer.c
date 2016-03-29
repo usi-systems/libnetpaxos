@@ -141,28 +141,8 @@ void send_value(evutil_socket_t fd, short what, void *arg)
     int n;
     if (ctx->conf.enable_paxos) {
         Message msg;
+        initialize_message(&msg, ctx->conf.paxos_msgtype, ctx->cur_inst);
         msglen = sizeof(Message);
-        msg.mstype = 0;
-        if (ctx->conf.reset_paxos) {
-            msg.mstype = 255;
-        }
-        msg.inst = 0;
-        msg.rnd = 1;
-        msg.vrnd = 0;
-        msg.acpid = 0;
-        msg.fsh = 0;
-        msg.fsl = 0;
-        msg.feh = 0;
-        msg.fel = 0;
-        msg.csh = 0;
-        msg.csl = 0;
-        msg.ceh = 0;
-        msg.cel = 0;
-        msg.ash = 0;
-        msg.asl = 0;
-        msg.aeh = 0;
-        msg.ael = 0;
-        msg.value = ctx->cur_inst;
         if (ctx->cur_inst >= ctx->conf.maxinst) {
             return;
         }
