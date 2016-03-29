@@ -24,8 +24,8 @@ void message_to_string(Message m, char *str) {
         m.acpid,
         (long long)m.ts.tv_sec, m.ts.tv_nsec,
         m.value,
-        m.start_high, m.start_low,
-        m.end_high, m.end_low );
+        m.csh, m.csl,
+        m.ceh, m.cel );
 }
 
 size_t pack(const Message *msg, char *buf) {
@@ -36,10 +36,14 @@ size_t pack(const Message *msg, char *buf) {
     s.acpid = htons(msg->acpid);
     s.mstype = htons(msg->mstype);
     s.value = htonl(msg->value);
-    s.start_high = htonl(msg->start_high);
-    s.start_low = htonl(msg->start_low);
-    s.end_high = htonl(msg->end_high);
-    s.end_low = htonl(msg->end_low);
+    s.csh = htonl(msg->csh);
+    s.csl = htonl(msg->csl);
+    s.ceh = htonl(msg->ceh);
+    s.cel = htonl(msg->cel);
+    s.ash = htonl(msg->ash);
+    s.asl = htonl(msg->asl);
+    s.aeh = htonl(msg->aeh);
+    s.ael = htonl(msg->ael);
     s.ts = msg->ts;
     memcpy(buf, &s, sizeof(s));
     return sizeof(s);
@@ -52,8 +56,12 @@ void unpack(Message *m) {
     m->acpid = ntohs(m->acpid);
     m->mstype = ntohs(m->mstype);
     m->value = ntohl(m->value);
-    m->start_high = ntohl(m->start_high);
-    m->start_low = ntohl(m->start_low);
-    m->end_high = ntohl(m->end_high);
-    m->end_low = ntohl(m->end_low);
+    m->csh = ntohl(m->csh);
+    m->csl = ntohl(m->csl);
+    m->ceh = ntohl(m->ceh);
+    m->cel = ntohl(m->cel);
+    m->ash = ntohl(m->ash);
+    m->asl = ntohl(m->asl);
+    m->aeh = ntohl(m->aeh);
+    m->ael = ntohl(m->ael);
 }

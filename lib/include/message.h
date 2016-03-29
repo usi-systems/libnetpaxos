@@ -10,10 +10,14 @@ typedef struct Message {
     uint16_t acpid;
     uint16_t mstype;
     uint32_t value;
-    uint32_t start_high;
-    uint32_t start_low;
-    uint32_t end_high;
-    uint32_t end_low;
+    uint32_t csh;
+    uint32_t csl;
+    uint32_t ceh;
+    uint32_t cel;
+    uint32_t ash;
+    uint32_t asl;
+    uint32_t aeh;
+    uint32_t ael;
     struct timespec ts;
     char   junk[1300];
 } Message;

@@ -78,7 +78,8 @@ void recv_cb(evutil_socket_t fd, short what, void *arg)
         double latency;
         struct sockaddr_in remote;
         socklen_t remote_len = sizeof(remote);
-        uint64_t cycles = 0;
+        uint64_t coord_cycles = 0;
+        uint64_t acpt_cycles = 0;
         struct timespec start, end, result;
         clock_gettime(CLOCK_MONOTONIC, &end);
 
@@ -90,15 +91,20 @@ void recv_cb(evutil_socket_t fd, short what, void *arg)
               return;
             }
             unpack(&msg);
-            uint32_t hi_part = (msg.end_high - msg.start_high);
-            uint32_t low_part = msg.end_low - msg.start_low;
+            uint32_t coord_lat_high = (msg.ceh - msg.csh);
+            uint32_t coord_lat_low = msg.cel - msg.csl;
+            coord_cycles = ((coord_cycles + coord_lat_high) << 32) + coord_lat_low;
             if (ctx->conf.verbose) {
                 message_to_string(msg, ctx->buffer);
                 fprintf(stdout, "%s" , ctx->buffer);
             }
+            // fprintf(stdout, "%d %d %ld\n", coord_lat_high, coord_lat_low, coord_cycles);
+
+            uint32_t acpt_lat_high = (msg.aeh - msg.ash);
+            uint32_t acpt_lat_low = msg.ael - msg.asl;
+            acpt_cycles = ((acpt_cycles + acpt_lat_high) << 32) + acpt_lat_low;
+
             start = msg.ts;
-            cycles = ((cycles + hi_part) << 32) + low_part;
-            fprintf(stdout, "%d %d %ld\n", hi_part, low_part, cycles);
         } else {
             TimespecMessage msg;
             int n = recvfrom(fd, &msg, sizeof(msg), 0, (struct sockaddr *) &remote, &remote_len);
@@ -112,7 +118,7 @@ void recv_cb(evutil_socket_t fd, short what, void *arg)
             fprintf(stderr, "Latency is negative\n");
         }
         latency = (result.tv_sec + ((double)result.tv_nsec) / 1e9);
-        fprintf(ctx->fp, "%.9f,%ld\n", latency, cycles);
+        fprintf(ctx->fp, "%.9f,%ld,%ld\n", latency, coord_cycles, acpt_cycles);
         ctx->avg_lat += latency;
         ctx->acked_packets++;
         ctx->mps++;
@@ -141,10 +147,14 @@ void send_value(evutil_socket_t fd, short what, void *arg)
         msg.rnd = 1;
         msg.vrnd = 0;
         msg.acpid = 0;
-        msg.start_high = 0;
-        msg.start_low = 0;
-        msg.end_high = 0;
-        msg.end_low = 0;
+        msg.csh = 0;
+        msg.csl = 0;
+        msg.ceh = 0;
+        msg.cel = 0;
+        msg.ash = 0;
+        msg.asl = 0;
+        msg.aeh = 1;
+        msg.ael = 1;
         msg.value = ctx->cur_inst;
         if (ctx->cur_inst >= ctx->conf.maxinst) {
             return;
