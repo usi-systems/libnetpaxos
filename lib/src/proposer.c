@@ -78,8 +78,7 @@ void recv_cb(evutil_socket_t fd, short what, void *arg)
         double latency;
         struct sockaddr_in remote;
         socklen_t remote_len = sizeof(remote);
-        uint64_t coord_cycles = 0;
-        uint64_t acpt_cycles = 0;
+        uint64_t coord_cycles = 0, acpt_cycles = 0, fwd_cycles = 0;
         struct timespec start, end, result;
         clock_gettime(CLOCK_MONOTONIC, &end);
 
@@ -104,6 +103,10 @@ void recv_cb(evutil_socket_t fd, short what, void *arg)
             uint32_t acpt_lat_low = msg.ael - msg.asl;
             acpt_cycles = ((acpt_cycles + acpt_lat_high) << 32) + acpt_lat_low;
 
+            uint32_t fwd_lat_high = (msg.feh - msg.fsh);
+            uint32_t fwd_lat_low = msg.fel - msg.fsl;
+            fwd_cycles = ((fwd_cycles + fwd_lat_high) << 32) + fwd_lat_low;
+
             start = msg.ts;
         } else {
             TimespecMessage msg;
@@ -118,7 +121,7 @@ void recv_cb(evutil_socket_t fd, short what, void *arg)
             fprintf(stderr, "Latency is negative\n");
         }
         latency = (result.tv_sec + ((double)result.tv_nsec) / 1e9);
-        fprintf(ctx->fp, "%.9f,%ld,%ld\n", latency, coord_cycles, acpt_cycles);
+        fprintf(ctx->fp, "%.9f,%ld,%ld,%ld\n", latency, fwd_cycles, coord_cycles, acpt_cycles);
         ctx->avg_lat += latency;
         ctx->acked_packets++;
         ctx->mps++;
@@ -147,14 +150,18 @@ void send_value(evutil_socket_t fd, short what, void *arg)
         msg.rnd = 1;
         msg.vrnd = 0;
         msg.acpid = 0;
+        msg.fsh = 0;
+        msg.fsl = 0;
+        msg.feh = 0;
+        msg.fel = 0;
         msg.csh = 0;
         msg.csl = 0;
         msg.ceh = 0;
         msg.cel = 0;
         msg.ash = 0;
         msg.asl = 0;
-        msg.aeh = 1;
-        msg.ael = 1;
+        msg.aeh = 0;
+        msg.ael = 0;
         msg.value = ctx->cur_inst;
         if (ctx->cur_inst >= ctx->conf.maxinst) {
             return;

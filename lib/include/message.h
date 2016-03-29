@@ -10,6 +10,10 @@ typedef struct Message {
     uint16_t acpid;
     uint16_t mstype;
     uint32_t value;
+    uint32_t fsh;
+    uint32_t fsl;
+    uint32_t feh;
+    uint32_t fel;
     uint32_t csh;
     uint32_t csl;
     uint32_t ceh;
