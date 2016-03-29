@@ -2,7 +2,7 @@
 
 library(ggplot2)
 library(tools)
-
+library(reshape2)
 
 # Input file should be named "device-trial.csv"
 
@@ -52,13 +52,37 @@ plot_box <- function(data) {
     ggtitle("boxplot latency")
 }
 
-args <- commandArgs(TRUE)
 
-data <- data.frame(device=character(), trial=character(),latency=numeric())
-for (i in args) {
-    df <- readThroughputLatency(i)
-    data <- rbind(data, df)
+readLatencyCycles <- function(x) {
+    print(x)
+    df <- read.csv(x, col.names=c('latency', 'forwarding', 'coordinator', 'acceptor'))
+    df$latency <- df$latency * 10^6  # Microsecond
+    df$forwarding <- 20*df$forwarding
+    df$coordinator <- 20*df$coordinator
+    df$acceptor <- 20*df$acceptor
+    return(df)
 }
 
-plot_cdf(data)
-plot_box(data)
+plot_cycles <- function(data) {
+    pdf("hardware_latency.pdf")
+    ggplot(data, aes(variable, value)) +
+    geom_boxplot() +
+    xlab("Process") +
+    scale_y_continuous("Latency (ns)", breaks=seq(0,1000, 100), minor_breaks=seq(50, 950, 100)) +
+    ggtitle("latencies of different processes")
+}
+
+args <- commandArgs(TRUE)
+
+# data <- data.frame(device=character(), trial=character(),latency=numeric())
+# for (i in args) {
+#     df <- readThroughputLatency(i)
+#     data <- rbind(data, df)
+# }
+
+# plot_cdf(data)
+# plot_box(data)
+
+df <- readLatencyCycles(args[1])
+mm = melt(df, id=c('latency'))
+plot_cycles(mm)
