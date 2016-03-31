@@ -13,6 +13,7 @@ typedef struct ProposerCtx {
     double avg_lat;
     int *values;
     char *buffer;
+    char *padding;
     FILE *fp;
 } ProposerCtx;
 

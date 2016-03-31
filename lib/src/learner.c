@@ -28,16 +28,21 @@ LearnerCtx *learner_ctx_new(Config conf) {
     if (ctx->values == NULL) {
         perror("Unable to allocate memory for values\n");
     }
-    ctx->buffer = malloc(conf.bufsize + 1);
-    if (ctx->buffer == NULL) {
-        perror("Unable to allocate memory for buffer\n");
+    ctx->msg = malloc(sizeof(Message));
+    if (ctx->msg == NULL) {
+        perror("Unable to allocate memory for msg\n");
+    }
+    ctx->padding = malloc(conf.padsize);
+    if (ctx->padding == NULL) {
+        perror("Unable to allocate memory for msg\n");
     }
     return ctx;
 }
 
 void learner_ctx_destroy(LearnerCtx *ctx) {
-    free(ctx->buffer);
     free(ctx->values);
+    free(ctx->msg);
+    free(ctx->padding);
     free(ctx);
 }
 
@@ -82,17 +87,15 @@ void cb_func(evutil_socket_t fd, short what, void *arg)
           return;
         }
         unpack(&msg);
-        if (ctx->conf.verbose) {
-            message_to_string(msg, ctx->buffer);
-            printf("%s" , ctx->buffer);
-        }
+        if (ctx->conf.verbose) print_message(msg);
+
         if (msg.inst >= ctx->conf.maxinst) {
             return;
         }
         ctx->values[msg.inst] = msg.value;
-        pack(&msg, ctx->buffer);
+        pack(&msg, ctx->msg);
         msglen = sizeof(Message);
-        n = sendto(fd, ctx->buffer, msglen, 0, (struct sockaddr*) &remote, remote_len);
+        n = sendto(fd, ctx->msg, msglen, 0, (struct sockaddr*) &remote, remote_len);
         if (n < 0) {
             perror("ERROR in sendto");
             return;

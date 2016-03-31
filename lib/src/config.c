@@ -43,9 +43,6 @@ Config *parse_conf(char *config_file) {
         else if (strcmp(key, "LEARNER_PORT") == 0) {
             conf->learner_port = atoi(value);
         }
-        else if (strcmp(key, "BUFSIZE") == 0) {
-            conf->bufsize = atoi(value);
-        }
         else if (strcmp(key, "MAXINST") == 0) {
             conf->maxinst = atoi(value);
         }
@@ -57,6 +54,9 @@ Config *parse_conf(char *config_file) {
         }
         else if (strcmp(key, "PAXOS_MSGTYPE") == 0) {
             conf->paxos_msgtype = atoi(value);
+        }
+        else if (strcmp(key, "PADSIZE") == 0) {
+            conf->padsize = atoi(value);
         }
     }
     fclose(fp);

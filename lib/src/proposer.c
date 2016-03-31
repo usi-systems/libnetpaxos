@@ -28,7 +28,8 @@ ProposerCtx *proposer_ctx_new(Config conf) {
     ctx->cur_inst = 0;
     ctx->acked_packets = 0;
     ctx->values = malloc(conf.maxinst * sizeof(int));
-    ctx->buffer = malloc(sizeof(Message));
+    ctx->buffer = malloc(sizeof(Message) + conf.padsize + 1);
+    ctx->padding = malloc(conf.padsize);
     char fname[32];
     int n = snprintf(fname, sizeof fname, "proposer%d.txt", getpid());
     if ( n < 0 || n >= sizeof fname )
@@ -41,6 +42,7 @@ void proposer_ctx_destroy(ProposerCtx *ctx) {
     fclose(ctx->fp);
     free(ctx->buffer);
     free(ctx->values);
+    free(ctx->padding);
     free(ctx);
 }
 
@@ -93,11 +95,7 @@ void recv_cb(evutil_socket_t fd, short what, void *arg)
             uint32_t coord_lat_high = (msg.ceh - msg.csh);
             uint32_t coord_lat_low = msg.cel - msg.csl;
             coord_cycles = ((coord_cycles + coord_lat_high) << 32) + coord_lat_low;
-            if (ctx->conf.verbose) {
-                message_to_string(msg, ctx->buffer);
-                fprintf(stdout, "%s" , ctx->buffer);
-            }
-            // fprintf(stdout, "%d %d %ld\n", coord_lat_high, coord_lat_low, coord_cycles);
+            if (ctx->conf.verbose) print_message(msg);
 
             uint32_t acpt_lat_high = (msg.aeh - msg.ash);
             uint32_t acpt_lat_low = msg.ael - msg.asl;
@@ -141,14 +139,15 @@ void send_value(evutil_socket_t fd, short what, void *arg)
     int n;
     if (ctx->conf.enable_paxos) {
         Message msg;
-        initialize_message(&msg, ctx->conf.paxos_msgtype, ctx->cur_inst);
-        msglen = sizeof(Message);
+        initialize_message(&msg, ctx->conf.paxos_msgtype, ctx->cur_inst, ctx->conf.padsize);
+        msglen = sizeof(Message) + ctx->conf.padsize;
         if (ctx->cur_inst >= ctx->conf.maxinst) {
             return;
         }
         ctx->values[ctx->cur_inst] = msg.value;
         clock_gettime(CLOCK_MONOTONIC, &msg.ts);
         pack(&msg, ctx->buffer);
+        strcat(ctx->buffer, ctx->padding);
         n = sendto(fd, ctx->buffer, msglen, 0, (struct sockaddr*) ctx->serveraddr, serverlen);
         if (n < 0) {
             perror("ERROR in sendto");

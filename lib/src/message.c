@@ -7,27 +7,28 @@
 #include "message.h"
 
 
-void message_to_string(Message m, char *str) {
-    sprintf(str,
-        "msgtype:  %.4x\t"
-        "instance: %.8x\t"
-        "round:    %.4x\t"
-        "vround:   %.4x\t"
-        "acceptor: %.4x\t"
-        "value:    %.8x\n"
-        "fsh:      %.8x\t"
-        "fsl:      %.8x\t"
-        "feh:      %.8x\t"
-        "fel:      %.8x\n"
-        "csh:      %.8x\t"
-        "csl:      %.8x\t"
-        "ceh:      %.8x\t"
-        "cel:      %.8x\n"
-        "ash:      %.8x\t"
-        "asl:      %.8x\t"
-        "aeh:      %.8x\t"
-        "ael:      %.8x\n",
-        m.msgtype, m.inst, m.rnd, m.vrnd, m.acpid, m.value,
+void print_message(Message m) {
+    fprintf(stdout,
+        "msgtype:  %d\t"
+        "instance: %d\t"
+        "round:    %d\t"
+        "vround:   %d\n"
+        "acceptor: %d\t"
+        "value:    %d\n"
+        "psize:    %d\n"
+        "fsh:      %d\t"
+        "fsl:      %d\t"
+        "feh:      %d\t"
+        "fel:      %d\n"
+        "csh:      %d\t"
+        "csl:      %d\t"
+        "ceh:      %d\t"
+        "cel:      %d\n"
+        "ash:      %d\t"
+        "asl:      %d\t"
+        "aeh:      %d\t"
+        "ael:      %d\n",
+        m.msgtype, m.inst, m.rnd, m.vrnd, m.acpid, m.value, m.psize,
         m.fsh, m.fsl, m.feh, m.fel,
         m.csh, m.csl, m.ceh, m.cel,
         m.ash, m.asl, m.aeh, m.ael);
@@ -41,6 +42,7 @@ size_t pack(const Message *msg, char *buf) {
     s.acpid = htons(msg->acpid);
     s.msgtype = htons(msg->msgtype);
     s.value = htonl(msg->value);
+    s.psize = htonl(msg->psize);
     s.fsh = htonl(msg->fsh);
     s.fsl = htonl(msg->fsl);
     s.feh = htonl(msg->feh);
@@ -65,6 +67,7 @@ void unpack(Message *m) {
     m->acpid = ntohs(m->acpid);
     m->msgtype = ntohs(m->msgtype);
     m->value = ntohl(m->value);
+    m->psize = ntohl(m->psize);
     m->fsh = ntohl(m->fsh);
     m->fsl = ntohl(m->fsl);
     m->feh = ntohl(m->feh);
@@ -79,13 +82,14 @@ void unpack(Message *m) {
     m->ael = ntohl(m->ael);
 }
 
-void initialize_message(Message *m, int msgtype, int val) {
+void initialize_message(Message *m, int msgtype, int val, int padsize) {
     m->inst     = 0;
     m->rnd      = 0;
     m->vrnd     = 0;
     m->acpid    = 0;
     m->msgtype  = msgtype;
     m->value    = val;
+    m->psize    = padsize;
     m->fsh      = 0;
     m->fsl      = 0;
     m->feh      = 0;

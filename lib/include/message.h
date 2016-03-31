@@ -23,7 +23,7 @@ typedef struct Message {
     uint32_t aeh;
     uint32_t ael;
     struct timespec ts;
-    char   junk[1300];
+    uint32_t psize;
 } Message;
 
 typedef struct TimespecMessage {
@@ -32,8 +32,8 @@ typedef struct TimespecMessage {
 } TimespecMessage;
 
 
-void message_to_string(Message m, char *str);
+void print_message(Message m);
 size_t pack(const Message *msg, char *buf);
 void unpack(Message *m);
-void initialize_message(Message *m, int msgtype, int val);
+void initialize_message(Message *m, int msgtype, int val, int padsize);
 #endif

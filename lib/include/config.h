@@ -7,11 +7,11 @@ typedef struct Config {
     int microsecond;
     int verbose;
     int learner_port;
-    int bufsize;
     int maxinst;
     int enable_paxos;
     int outstanding;
     int paxos_msgtype;
+    int padsize;
     char server[64];
 } Config;
 
