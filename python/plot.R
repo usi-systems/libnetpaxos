@@ -55,8 +55,8 @@ plot_box <- function(data) {
 
 readLatencyCycles <- function(x) {
     print(x)
-    df <- read.csv(x, col.names=c('latency', 'forwarding', 'coordinator', 'acceptor'))
-    df$latency <- df$latency * 10^6  # Microsecond
+    df <- read.csv(x, col.names=c('endhost', 'forwarding', 'coordinator', 'acceptor'))
+    df$endhost <- df$endhost * 10^6  # Microsecond
     df$forwarding <- 20*df$forwarding
     df$coordinator <- 20*df$coordinator
     df$acceptor <- 20*df$acceptor
@@ -72,6 +72,15 @@ plot_cycles <- function(data) {
     ggtitle("latencies of different processes")
 }
 
+plot_end_host_latency <- function(data) {
+    pdf("endhost_latency.pdf")
+    ggplot(data, aes(variable, value)) +
+    geom_boxplot() +
+    ylab("latencies (us)") +
+    xlab('') +
+    ggtitle("latencies of NetPaxos on the end host")
+}
+
 args <- commandArgs(TRUE)
 
 # data <- data.frame(device=character(), trial=character(),latency=numeric())
@@ -84,5 +93,8 @@ args <- commandArgs(TRUE)
 # plot_box(data)
 
 df <- readLatencyCycles(args[1])
-mm = melt(df, id=c('latency'))
-plot_cycles(mm)
+mm = melt(df)
+print(head(mm))
+endhost <- melt ( df[ c('endhost') ] )
+plot_end_host_latency(endhost)
+# plot_cycles(mm)
