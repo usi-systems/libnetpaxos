@@ -7,6 +7,7 @@ typedef struct Config {
     int microsecond;
     int verbose;
     int learner_port;
+    int proposer_port;
     int maxinst;
     int enable_paxos;
     int outstanding;

@@ -20,21 +20,21 @@
 #include "netpaxos_utils.h"
 #include "config.h"
 
-
-static char *rand_string(char *str, size_t size)
-{
-    const char charset[] = "QWERTYUIOPASDFGHJKLZXCVBNM!@#$^&*()1234567890";
-    if (size) {
-        --size;
-        size_t n;
-        for (n = 0; n < size; n++) {
-            int key = rand() % (int) (sizeof charset - 1);
-            str[n] = charset[key];
-        }
-        str[size] = '\0';
-    }
-    return str;
-}
+#define BUF_SIZE 32
+// static char *rand_string(char *str, size_t size)
+// {
+//     const char charset[] = "QWERTYUIOPASDFGHJKLZXCVBNM!@#$^&*()1234567890";
+//     if (size) {
+//         --size;
+//         size_t n;
+//         for (n = 0; n < size; n++) {
+//             int key = rand() % (int) (sizeof charset - 1);
+//             str[n] = charset[key];
+//         }
+//         str[size] = '\0';
+//     }
+//     return str;
+// }
 
 ProposerCtx *proposer_ctx_new(Config conf) {
     ProposerCtx *ctx = malloc(sizeof(ProposerCtx));
@@ -43,8 +43,9 @@ ProposerCtx *proposer_ctx_new(Config conf) {
     ctx->avg_lat = 0.0;
     ctx->cur_inst = 0;
     ctx->acked_packets = 0;
-    ctx->buffer = malloc(sizeof(Message) + 1);
-    bzero(ctx->buffer, sizeof(Message) + 1);
+    ctx->buf = malloc(BUF_SIZE);
+    ctx->msg = malloc(sizeof(Message) + 1);
+    bzero(ctx->msg, sizeof(Message) + 1);
     char fname[32];
     int n = snprintf(fname, sizeof fname, "proposer-%d.txt", conf.node_id);
     if ( n < 0 || n >= sizeof fname )
@@ -55,7 +56,8 @@ ProposerCtx *proposer_ctx_new(Config conf) {
 
 void proposer_ctx_destroy(ProposerCtx *ctx) {
     fclose(ctx->fp);
-    free(ctx->buffer);
+    free(ctx->buf);
+    free(ctx->msg);
     free(ctx);
 }
 
@@ -67,7 +69,6 @@ void proposer_signal_handler(evutil_socket_t fd, short what, void *arg) {
         fprintf(stdout, "sent_inst: %d\n", ctx->cur_inst);
         fprintf(stdout, "acked_packets: %d\n", ctx->acked_packets);
         proposer_ctx_destroy(ctx);
-
     }
 }
 
@@ -82,6 +83,7 @@ void perf_cb(evutil_socket_t fd, short what, void *arg)
     ctx->avg_lat = 0;
 }
 
+
 void recv_cb(evutil_socket_t fd, short what, void *arg)
 {
     ProposerCtx *ctx = (ProposerCtx *) arg;
@@ -94,9 +96,9 @@ void recv_cb(evutil_socket_t fd, short what, void *arg)
           perror("ERROR in recvfrom");
           return;
         }
-        unpack(ctx->buffer, &msg);
+        unpack(ctx->msg, &msg);
         
-        if (ctx->conf.verbose) print_message(ctx->buffer);
+        if (ctx->conf.verbose) print_message(ctx->msg);
 
         ctx->acked_packets++;
         ctx->mps++;
@@ -107,9 +109,25 @@ void recv_cb(evutil_socket_t fd, short what, void *arg)
 }
 
 
-void send_value(evutil_socket_t fd, short what, void *arg)
+void receive_request(evutil_socket_t fd, short what, void *arg)
 {
     ProposerCtx *ctx = (ProposerCtx *) arg;
+    if (what&EV_READ) {
+        struct sockaddr_in remote;
+        socklen_t remote_len = sizeof(remote);
+        int n = recvfrom(fd, ctx->buf, BUF_SIZE, 0, (struct sockaddr *) &remote, &remote_len);
+        if (n < 0) {
+          perror("ERROR in recvfrom");
+          return;
+        }
+        propose_value(ctx, ctx->buf);
+    }
+}
+
+
+void propose_value(ProposerCtx *ctx, void *arg)
+{
+    char *v = (char*) arg;
     socklen_t serverlen = sizeof(*ctx->serveraddr);
     Message msg;
     initialize_message(&msg, ctx->conf.paxos_msgtype);
@@ -118,29 +136,52 @@ void send_value(evutil_socket_t fd, short what, void *arg)
     }
     if (ctx->conf.verbose) print_message(&msg);
     
-    rand_string(msg.paxosval, PAXOS_VALUE_SIZE);
+    strncpy(msg.paxosval, v, PAXOS_VALUE_SIZE-1);
 
-    pack(ctx->buffer, &msg);
-    if (sendto(fd, ctx->buffer, sizeof(Message), 0, (struct sockaddr*) ctx->serveraddr, serverlen) < 0) {
+    pack(ctx->msg, &msg);
+    if (sendto(ctx->learner_sock, ctx->msg, sizeof(Message), 0, 
+            (struct sockaddr*) ctx->serveraddr, serverlen) < 0) {
         perror("ERROR in sendto");
         return;
     }
+
     ctx->cur_inst++;
+
 }
 
-int start_proposer(Config *conf) {
-    ProposerCtx *ctx = proposer_ctx_new(*conf);
-    ctx->base = event_base_new();
-    event_base_priority_init(ctx->base, 4);
-    struct hostent *server;
-    int serverlen;
-    ctx->serveraddr = malloc( sizeof (struct sockaddr_in) );
-
+int create_server_socket(Config *conf) {
     int fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (fd < 0) {
         perror("cannot create socket");
         return EXIT_FAILURE;
     }
+    struct sockaddr_in serv_addr;
+    bzero((char *) &serv_addr, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(conf->proposer_port);
+    serv_addr.sin_addr.s_addr = INADDR_ANY;
+    if (bind(fd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
+        perror("ERROR on binding");
+        return EXIT_FAILURE;
+    }
+    return fd;
+}
+
+int start_proposer(Config *conf, void *(*result_cb)(void* arg)) {
+    ProposerCtx *ctx = proposer_ctx_new(*conf);
+    ctx->base = event_base_new();
+    ctx->result_cb = result_cb;
+    event_base_priority_init(ctx->base, 4);
+    struct hostent *server;
+    int serverlen;
+    ctx->serveraddr = malloc( sizeof (struct sockaddr_in) );
+
+    int learner_sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (learner_sock < 0) {
+        perror("cannot create socket");
+        return EXIT_FAILURE;
+    }
+    ctx->learner_sock = learner_sock;
 
     server = gethostbyname(conf->server);
     if (server == NULL) {
@@ -157,7 +198,7 @@ int start_proposer(Config *conf) {
 
     struct event *ev_recv, *ev_perf, *evsig;
     struct timeval perf_tm = {1, 0};
-    ev_recv = event_new(ctx->base, fd, EV_READ|EV_PERSIST, recv_cb, ctx);
+    ev_recv = event_new(ctx->base, learner_sock, EV_READ|EV_PERSIST, recv_cb, ctx);
     ev_perf = event_new(ctx->base, -1, EV_TIMEOUT|EV_PERSIST, perf_cb, ctx);
     evsig = evsignal_new(ctx->base, SIGTERM, proposer_signal_handler, ctx);
 
@@ -169,20 +210,28 @@ int start_proposer(Config *conf) {
     event_add(ev_perf, &perf_tm);
     event_add(evsig, NULL);
 
-    struct timeval send_interval = { conf->second, conf->microsecond };
-    struct timeval tv_in = { conf->second, conf->microsecond };
-    const struct timeval *tv_out;
-    tv_out = event_base_init_common_timeout(ctx->base, &tv_in);
-    memcpy(&send_interval, tv_out, sizeof(struct timeval));
-    int i = 0;
-    for (i; i < conf->outstanding; i++) {
-        struct event *ev_send;
-        ev_send = event_new(ctx->base, fd, EV_TIMEOUT|EV_PERSIST, send_value, ctx);
-        event_priority_set(ev_send, 2);
-        event_add(ev_send, &send_interval);
-    }
+    // struct timeval send_interval = { conf->second, conf->microsecond };
+    // struct timeval tv_in = { conf->second, conf->microsecond };
+    // const struct timeval *tv_out;
+    // tv_out = event_base_init_common_timeout(ctx->base, &tv_in);
+    // memcpy(&send_interval, tv_out, sizeof(struct timeval));
+    // int i = 0;
+    // for (i; i < conf->outstanding; i++) {
+    //     struct event *ev_send;
+    //     ev_send = event_new(ctx->base, learner_sock, EV_TIMEOUT|EV_PERSIST, send_value, ctx);
+    //     event_priority_set(ev_send, 2);
+    //     event_add(ev_send, &send_interval);
+    // }
+
+    int client_sock = create_server_socket(conf);
+    ctx->client_sock = client_sock;
+    struct event *ev_receive_request;
+    ev_receive_request = event_new(ctx->base, client_sock, EV_READ|EV_PERSIST, receive_request, ctx);
+    event_add(ev_receive_request, NULL);
 
     event_base_dispatch(ctx->base);
-    close(fd);
+    close(client_sock);
+    close(learner_sock);
     return EXIT_SUCCESS;
 }
+

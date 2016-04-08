@@ -16,7 +16,7 @@ typedef struct LearnerCtx {
     void *(*deliver)(void* arg);
 } LearnerCtx;
 
-int start_learner(Config *conf, void *(*deliver)(void* arg));
+int start_learner(Config *conf, void *(*deliver_cb)(void* arg));
 LearnerCtx *learner_ctx_new(Config conf);
 void learner_ctx_destroy(LearnerCtx *st);
 

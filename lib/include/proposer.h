@@ -12,14 +12,19 @@ typedef struct ProposerCtx {
     int cur_inst;
     int acked_packets;
     double avg_lat;
+    evutil_socket_t client_sock;
+    evutil_socket_t learner_sock;
     char **values;
-    Message *buffer;
+    Message *msg;
+    char *buf;
     char *padding;
     FILE *fp;
+    void *(*result_cb)(void* arg);
 } ProposerCtx;
 
-int start_proposer();
+int start_proposer(Config *conf, void *(*result_cb)(void* arg));
 ProposerCtx *proposer_ctx_new(Config conf);
 void proposer_ctx_destroy(ProposerCtx *st);
-void send_value(evutil_socket_t fd, short what, void *arg);
+void submit(void *arg);
+void propose_value(ProposerCtx *ctx, void *arg);
 #endif
