@@ -15,6 +15,7 @@
 #include "netpaxos_utils.h"
 #include "config.h"
 
+
 /* Here's a callback function that calls loop break */
 LearnerCtx *learner_ctx_new(Config conf) {
     LearnerCtx *ctx = malloc(sizeof(LearnerCtx));
@@ -85,6 +86,7 @@ void cb_func(evutil_socket_t fd, short what, void *arg)
     if (n < 0) {perror("ERROR in recvfrom"); return; }
     unpack(ctx->msg, &msg);
     strcpy(ctx->values[ctx->msg->inst], ctx->msg->paxosval);
+    ctx->deliver(ctx->msg->paxosval);
     if (ctx->conf.verbose) print_message(ctx->msg);
     if (msg.inst >= ctx->conf.maxinst) { return; }
     n = sendto(fd, &msg, sizeof(Message), 0, (struct sockaddr*) &remote, remote_len);
@@ -94,9 +96,10 @@ void cb_func(evutil_socket_t fd, short what, void *arg)
     if (ctx->num_packets == ctx->conf.maxinst) { raise(SIGTERM); }
 }
 
-int start_learner(Config *conf) {
+int start_learner(Config *conf, void *(*deliver_cb)(void* arg)) {
     LearnerCtx *ctx = learner_ctx_new(*conf);
     ctx->base = event_base_new();
+    ctx->deliver = deliver_cb;
     event_base_priority_init(ctx->base, 4);
     int fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (fd < 0) {

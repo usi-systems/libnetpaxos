@@ -13,9 +13,10 @@ typedef struct LearnerCtx {
     Message *msg;
     char **values;
     FILE *fp;
+    void *(*deliver)(void* arg);
 } LearnerCtx;
 
-int start_learner();
+int start_learner(Config *conf, void *(*deliver)(void* arg));
 LearnerCtx *learner_ctx_new(Config conf);
 void learner_ctx_destroy(LearnerCtx *st);
 

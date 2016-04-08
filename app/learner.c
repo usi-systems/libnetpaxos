@@ -3,8 +3,12 @@
 #include <unistd.h>
 #include <string.h>
 #include "learner.h"
-#include "proposer.h"
 #include "config.h"
+
+void *deliver(void *arg) {
+    char *value = (char *)arg;
+    printf("delivered %s\n", value);
+}
 
 int main(int argc, char* argv[]) {
     if (argc != 3) {
@@ -13,7 +17,7 @@ int main(int argc, char* argv[]) {
     }
     Config *conf = parse_conf(argv[1]);
     conf->node_id = atoi(argv[2]);
-    start_learner(conf);
+    start_learner(conf, deliver);
     free(conf);
     return (EXIT_SUCCESS);
 }
