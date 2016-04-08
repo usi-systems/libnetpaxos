@@ -1,6 +1,7 @@
 #ifndef _PROPOSER_H_
 #define _PROPOSER_H_
 #include <event2/event.h>
+#include <event2/bufferevent.h>
 #include "config.h"
 #include "message.h"
 
@@ -20,6 +21,7 @@ typedef struct ProposerCtx {
     char *padding;
     FILE *fp;
     void *(*result_cb)(void* arg);
+    struct bufferevent *bev;
 } ProposerCtx;
 
 int start_proposer(Config *conf, void *(*result_cb)(void* arg));

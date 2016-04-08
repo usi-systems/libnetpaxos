@@ -5,7 +5,9 @@
 #include <netinet/in.h>
 #include <netdb.h>
 #include <arpa/inet.h>
-#include <event2/event.h>
+#include <event2/listener.h>
+#include <event2/bufferevent.h>
+#include <event2/buffer.h>
 #include <string.h>
 #include <strings.h>
 #include <inttypes.h>
@@ -36,6 +38,63 @@
 //     return str;
 // }
 
+static void
+echo_read_cb(struct bufferevent *bev, void *arg)
+{
+    ProposerCtx *ctx = (ProposerCtx *) arg;
+    /* This callback is invoked when there is data to read on bev. */
+    struct evbuffer *input = bufferevent_get_input(bev);
+    // struct evbuffer *output = bufferevent_get_output(bev);
+    size_t len = evbuffer_get_length(input);
+    if (len) {
+        evbuffer_remove(input, ctx->buf, len);
+        printf("Drained %lu bytes from %s\n", (unsigned long) len, ctx->buf);
+        propose_value(ctx, ctx->buf);
+    }
+    /* Copy all the data from the input buffer to the output buffer. */
+    // evbuffer_add_buffer(output, input);
+}
+
+static void
+echo_event_cb(struct bufferevent *bev, short events, void *ctx)
+{
+    if (events & BEV_EVENT_ERROR)
+            perror("Error from bufferevent");
+    if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
+            bufferevent_free(bev);
+    }
+}
+
+static void
+accept_conn_cb(struct evconnlistener *listener,
+    evutil_socket_t fd, struct sockaddr *address, int socklen,
+    void *arg)
+{
+    ProposerCtx *ctx = (ProposerCtx *) arg;
+    /* We got a new connection! Set up a bufferevent for it. */
+    struct event_base *base = evconnlistener_get_base(listener);
+    struct bufferevent *bev = bufferevent_socket_new(
+            base, fd, BEV_OPT_CLOSE_ON_FREE);
+
+    bufferevent_setcb(bev, echo_read_cb, NULL, echo_event_cb, ctx);
+
+    bufferevent_enable(bev, EV_READ|EV_WRITE);
+    // Assume there is only one client
+    ctx->bev = bev;
+}
+
+static void
+accept_error_cb(struct evconnlistener *listener, void *ctx)
+{
+        struct event_base *base = evconnlistener_get_base(listener);
+        int err = EVUTIL_SOCKET_ERROR();
+        fprintf(stderr, "Got an error %d (%s) on the listener. "
+                "Shutting down.\n", err, evutil_socket_error_to_string(err));
+
+        event_base_loopexit(base, NULL);
+}
+
+
 ProposerCtx *proposer_ctx_new(Config conf) {
     ProposerCtx *ctx = malloc(sizeof(ProposerCtx));
     ctx->conf = conf;
@@ -44,8 +103,7 @@ ProposerCtx *proposer_ctx_new(Config conf) {
     ctx->cur_inst = 0;
     ctx->acked_packets = 0;
     ctx->buf = malloc(BUF_SIZE);
-    ctx->msg = malloc(sizeof(Message) + 1);
-    bzero(ctx->msg, sizeof(Message) + 1);
+    ctx->msg = malloc(sizeof(Message) + 1); bzero(ctx->msg, sizeof(Message) + 1);
     char fname[32];
     int n = snprintf(fname, sizeof fname, "proposer-%d.txt", conf.node_id);
     if ( n < 0 || n >= sizeof fname )
@@ -55,10 +113,8 @@ ProposerCtx *proposer_ctx_new(Config conf) {
 }
 
 void proposer_ctx_destroy(ProposerCtx *ctx) {
-    fclose(ctx->fp);
     free(ctx->buf);
-    free(ctx->msg);
-    free(ctx);
+    free(ctx->msg); free(ctx);
 }
 
 
@@ -102,25 +158,11 @@ void recv_cb(evutil_socket_t fd, short what, void *arg)
 
         ctx->acked_packets++;
         ctx->mps++;
+        bufferevent_write(ctx->bev, msg.paxosval, strlen(msg.paxosval));
+
         if (ctx->acked_packets >= ctx->conf.maxinst) {
             raise(SIGTERM);
         }
-    }
-}
-
-
-void receive_request(evutil_socket_t fd, short what, void *arg)
-{
-    ProposerCtx *ctx = (ProposerCtx *) arg;
-    if (what&EV_READ) {
-        struct sockaddr_in remote;
-        socklen_t remote_len = sizeof(remote);
-        int n = recvfrom(fd, ctx->buf, BUF_SIZE, 0, (struct sockaddr *) &remote, &remote_len);
-        if (n < 0) {
-          perror("ERROR in recvfrom");
-          return;
-        }
-        propose_value(ctx, ctx->buf);
     }
 }
 
@@ -134,9 +176,9 @@ void propose_value(ProposerCtx *ctx, void *arg)
     if (ctx->cur_inst >= ctx->conf.maxinst) {
         return;
     }
+    strncpy(msg.paxosval, v, PAXOS_VALUE_SIZE-1);
     if (ctx->conf.verbose) print_message(&msg);
     
-    strncpy(msg.paxosval, v, PAXOS_VALUE_SIZE-1);
 
     pack(ctx->msg, &msg);
     if (sendto(ctx->learner_sock, ctx->msg, sizeof(Message), 0, 
@@ -150,7 +192,7 @@ void propose_value(ProposerCtx *ctx, void *arg)
 }
 
 int create_server_socket(Config *conf) {
-    int fd = socket(AF_INET, SOCK_DGRAM, 0);
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) {
         perror("cannot create socket");
         return EXIT_FAILURE;
@@ -164,6 +206,7 @@ int create_server_socket(Config *conf) {
         perror("ERROR on binding");
         return EXIT_FAILURE;
     }
+    evutil_make_socket_nonblocking(fd);
     return fd;
 }
 
@@ -210,27 +253,26 @@ int start_proposer(Config *conf, void *(*result_cb)(void* arg)) {
     event_add(ev_perf, &perf_tm);
     event_add(evsig, NULL);
 
-    // struct timeval send_interval = { conf->second, conf->microsecond };
-    // struct timeval tv_in = { conf->second, conf->microsecond };
-    // const struct timeval *tv_out;
-    // tv_out = event_base_init_common_timeout(ctx->base, &tv_in);
-    // memcpy(&send_interval, tv_out, sizeof(struct timeval));
-    // int i = 0;
-    // for (i; i < conf->outstanding; i++) {
-    //     struct event *ev_send;
-    //     ev_send = event_new(ctx->base, learner_sock, EV_TIMEOUT|EV_PERSIST, send_value, ctx);
-    //     event_priority_set(ev_send, 2);
-    //     event_add(ev_send, &send_interval);
-    // }
-
-    int client_sock = create_server_socket(conf);
-    ctx->client_sock = client_sock;
-    struct event *ev_receive_request;
-    ev_receive_request = event_new(ctx->base, client_sock, EV_READ|EV_PERSIST, receive_request, ctx);
-    event_add(ev_receive_request, NULL);
+    struct sockaddr_in sin;
+    memset(&sin, 0, sizeof(sin));
+    /* This is an INET address */
+    sin.sin_family = AF_INET;
+    /* Listen on 0.0.0.0 */
+    sin.sin_addr.s_addr = htonl(0);
+    /* Listen on the given port. */
+    sin.sin_port = htons(conf->proposer_port);
+    struct evconnlistener *listener;
+    listener = evconnlistener_new_bind(ctx->base, accept_conn_cb, ctx,
+        LEV_OPT_LEAVE_SOCKETS_BLOCKING|LEV_OPT_CLOSE_ON_FREE|LEV_OPT_REUSEABLE, -1,
+    (struct sockaddr*)&sin, sizeof(sin));
+    if (!listener) {
+        perror("Couldn't create listener");
+        return 1;
+    }
+    evconnlistener_set_error_cb(listener, accept_error_cb);
 
     event_base_dispatch(ctx->base);
-    close(client_sock);
+    // close(client_sock);
     close(learner_sock);
     return EXIT_SUCCESS;
 }
