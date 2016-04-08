@@ -11,6 +11,8 @@ typedef struct LearnerCtx {
     int mps;
     int num_packets;
     Message *msg;
+    char **values;
+    FILE *fp;
 } LearnerCtx;
 
 int start_learner();
