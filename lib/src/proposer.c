@@ -46,7 +46,7 @@ ProposerCtx *proposer_ctx_new(Config conf) {
     ctx->buffer = malloc(sizeof(Message) + 1);
     bzero(ctx->buffer, sizeof(Message) + 1);
     char fname[32];
-    int n = snprintf(fname, sizeof fname, "proposer%d.txt", getpid());
+    int n = snprintf(fname, sizeof fname, "proposer-%d.txt", conf.node_id);
     if ( n < 0 || n >= sizeof fname )
         exit(EXIT_FAILURE);
     ctx->fp = fopen(fname, "w+");

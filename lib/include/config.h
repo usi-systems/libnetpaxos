@@ -12,6 +12,7 @@ typedef struct Config {
     int outstanding;
     int paxos_msgtype;
     int padsize;
+    int node_id;
     char server[64];
 } Config;
 

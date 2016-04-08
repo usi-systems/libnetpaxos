@@ -7,11 +7,12 @@
 #include "config.h"
 
 int main(int argc, char* argv[]) {
-    if (argc != 2) {
-        printf("%s config-file\n", argv[0]);
+    if (argc != 3) {
+        printf("%s config node_id\n", argv[0]);
         exit(EXIT_FAILURE);
     }
     Config *conf = parse_conf(argv[1]);
+    conf->node_id = atoi(argv[2]);
     start_proposer(conf);
     free(conf);
     return (EXIT_SUCCESS);

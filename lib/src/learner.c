@@ -33,7 +33,7 @@ LearnerCtx *learner_ctx_new(Config conf) {
         bzero(ctx->values[i], PAXOS_VALUE_SIZE);
     }
     char fname[32];
-    int n = snprintf(fname, sizeof fname, "learner%d.txt", getpid());
+    int n = snprintf(fname, sizeof fname, "learner-%d.txt", conf.node_id);
     if ( n < 0 || n >= sizeof fname )
         exit(EXIT_FAILURE);
     ctx->fp = fopen(fname, "w+");
@@ -46,7 +46,6 @@ void learner_ctx_destroy(LearnerCtx *ctx) {
     fclose(ctx->fp);
     free(ctx->msg);
     for (i = 0; i < ctx->conf.maxinst; i++) {
-        printf("free value i %d\n", i);
         free(ctx->values[i]);
     }
     free(ctx->values);
