@@ -20,6 +20,22 @@
 #include "netpaxos_utils.h"
 #include "config.h"
 
+
+static char *rand_string(char *str, size_t size)
+{
+    const char charset[] = "QWERTYUIOPASDFGHJKLZXCVBNM!@#$^&*()1234567890";
+    if (size) {
+        --size;
+        size_t n;
+        for (n = 0; n < size; n++) {
+            int key = rand() % (int) (sizeof charset - 1);
+            str[n] = charset[key];
+        }
+        str[size] = '\0';
+    }
+    return str;
+}
+
 ProposerCtx *proposer_ctx_new(Config conf) {
     ProposerCtx *ctx = malloc(sizeof(ProposerCtx));
     ctx->conf = conf;
@@ -27,9 +43,8 @@ ProposerCtx *proposer_ctx_new(Config conf) {
     ctx->avg_lat = 0.0;
     ctx->cur_inst = 0;
     ctx->acked_packets = 0;
-    ctx->values = malloc(conf.maxinst * sizeof(int));
-    ctx->buffer = malloc(sizeof(Message) + conf.padsize + 1);
-    ctx->padding = malloc(conf.padsize);
+    ctx->buffer = malloc(sizeof(Message) + 1);
+    bzero(ctx->buffer, sizeof(Message) + 1);
     char fname[32];
     int n = snprintf(fname, sizeof fname, "proposer%d.txt", getpid());
     if ( n < 0 || n >= sizeof fname )
@@ -41,8 +56,6 @@ ProposerCtx *proposer_ctx_new(Config conf) {
 void proposer_ctx_destroy(ProposerCtx *ctx) {
     fclose(ctx->fp);
     free(ctx->buffer);
-    free(ctx->values);
-    free(ctx->padding);
     free(ctx);
 }
 
@@ -51,10 +64,6 @@ void proposer_signal_handler(evutil_socket_t fd, short what, void *arg) {
     ProposerCtx *ctx = (ProposerCtx *) arg;
     if (what&EV_SIGNAL) {
         event_base_loopbreak(ctx->base);
-        // int i;
-        // for (i = 0; i < ctx->max_inst; i++) {
-        //     fprintf(ctx->fp, "%d\n", ctx->values[i]);
-        // }
         fprintf(stdout, "sent_inst: %d\n", ctx->cur_inst);
         fprintf(stdout, "acked_packets: %d\n", ctx->acked_packets);
         proposer_ctx_destroy(ctx);
@@ -77,53 +86,20 @@ void recv_cb(evutil_socket_t fd, short what, void *arg)
 {
     ProposerCtx *ctx = (ProposerCtx *) arg;
     if (what&EV_READ) {
-        double latency;
         struct sockaddr_in remote;
         socklen_t remote_len = sizeof(remote);
-        uint64_t coord_cycles = 0, acpt_cycles = 0, fwd_cycles = 0;
-        struct timespec start, end, result;
-        clock_gettime(CLOCK_MONOTONIC, &end);
-
-        if (ctx->conf.enable_paxos) {
-            Message msg;
-            int n = recvfrom(fd, &msg, sizeof(msg), 0, (struct sockaddr *) &remote, &remote_len);
-            if (n < 0) {
-              perror("ERROR in recvfrom");
-              return;
-            }
-            unpack(&msg);
-            uint32_t coord_lat_high = (msg.ceh - msg.csh);
-            uint32_t coord_lat_low = msg.cel - msg.csl;
-            coord_cycles = ((coord_cycles + coord_lat_high) << 32) + coord_lat_low;
-            if (ctx->conf.verbose) print_message(msg);
-
-            uint32_t acpt_lat_high = (msg.aeh - msg.ash);
-            uint32_t acpt_lat_low = msg.ael - msg.asl;
-            acpt_cycles = ((acpt_cycles + acpt_lat_high) << 32) + acpt_lat_low;
-
-            uint32_t fwd_lat_high = (msg.feh - msg.fsh);
-            uint32_t fwd_lat_low = msg.fel - msg.fsl;
-            fwd_cycles = ((fwd_cycles + fwd_lat_high) << 32) + fwd_lat_low;
-
-            start = msg.ts;
-        } else {
-            TimespecMessage msg;
-            int n = recvfrom(fd, &msg, sizeof(msg), 0, (struct sockaddr *) &remote, &remote_len);
-            if (n < 0) {
-              perror("ERROR in recvfrom");
-              return;
-            }
-            start = msg.ts;
+        Message msg;
+        int n = recvfrom(fd, &msg, sizeof(msg), 0, (struct sockaddr *) &remote, &remote_len);
+        if (n < 0) {
+          perror("ERROR in recvfrom");
+          return;
         }
-        if (timediff(&result, &end, &start) == 1) {
-            fprintf(stderr, "Latency is negative\n");
-        }
-        latency = (result.tv_sec + ((double)result.tv_nsec) / 1e9);
-        fprintf(ctx->fp, "%.9f,%ld,%ld,%ld\n", latency, fwd_cycles, coord_cycles, acpt_cycles);
-        ctx->avg_lat += latency;
+        unpack(ctx->buffer, &msg);
+        
+        if (ctx->conf.verbose) print_message(ctx->buffer);
+
         ctx->acked_packets++;
         ctx->mps++;
-
         if (ctx->acked_packets >= ctx->conf.maxinst) {
             raise(SIGTERM);
         }
@@ -135,35 +111,20 @@ void send_value(evutil_socket_t fd, short what, void *arg)
 {
     ProposerCtx *ctx = (ProposerCtx *) arg;
     socklen_t serverlen = sizeof(*ctx->serveraddr);
-    size_t msglen;
-    int n;
-    if (ctx->conf.enable_paxos) {
-        Message msg;
-        initialize_message(&msg, ctx->conf.paxos_msgtype, ctx->cur_inst, ctx->conf.padsize);
-        msglen = sizeof(Message) + ctx->conf.padsize;
-        if (ctx->cur_inst >= ctx->conf.maxinst) {
-            return;
-        }
-        ctx->values[ctx->cur_inst] = msg.value;
-        clock_gettime(CLOCK_MONOTONIC, &msg.ts);
-        pack(&msg, ctx->buffer);
-        strcat(ctx->buffer, ctx->padding);
-        n = sendto(fd, ctx->buffer, msglen, 0, (struct sockaddr*) ctx->serveraddr, serverlen);
-        if (n < 0) {
-            perror("ERROR in sendto");
-            return;
-        }
-    } else {
-        TimespecMessage msg;
-        msglen = sizeof(TimespecMessage);
-        clock_gettime(CLOCK_MONOTONIC, &(msg.ts));
-        n = sendto(fd, &msg, msglen, 0, (struct sockaddr*) ctx->serveraddr, serverlen);
-        if (n < 0) {
-            perror("ERROR in sendto");
-            return;
-        }
+    Message msg;
+    initialize_message(&msg, ctx->conf.paxos_msgtype);
+    if (ctx->cur_inst >= ctx->conf.maxinst) {
+        return;
     }
+    if (ctx->conf.verbose) print_message(&msg);
+    
+    rand_string(msg.paxosval, PAXOS_VALUE_SIZE);
 
+    pack(ctx->buffer, &msg);
+    if (sendto(fd, ctx->buffer, sizeof(Message), 0, (struct sockaddr*) ctx->serveraddr, serverlen) < 0) {
+        perror("ERROR in sendto");
+        return;
+    }
     ctx->cur_inst++;
 }
 

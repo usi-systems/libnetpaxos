@@ -3,15 +3,14 @@
 #include <sys/types.h>
 #include <event2/event.h>
 #include "config.h"
+#include "message.h"
 
 typedef struct LearnerCtx {
     struct event_base *base;
     Config conf;
     int mps;
     int num_packets;
-    int *values;
-    char *msg;
-    char *padding;
+    Message *msg;
 } LearnerCtx;
 
 int start_learner();

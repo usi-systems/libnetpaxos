@@ -2,6 +2,7 @@
 #define _PROPOSER_H_
 #include <event2/event.h>
 #include "config.h"
+#include "message.h"
 
 typedef struct ProposerCtx {
     struct event_base *base;
@@ -11,8 +12,8 @@ typedef struct ProposerCtx {
     int cur_inst;
     int acked_packets;
     double avg_lat;
-    int *values;
-    char *buffer;
+    char **values;
+    Message *buffer;
     char *padding;
     FILE *fp;
 } ProposerCtx;

@@ -14,35 +14,23 @@
 #include "learner.h"
 #include "netpaxos_utils.h"
 #include "config.h"
+
 /* Here's a callback function that calls loop break */
 LearnerCtx *learner_ctx_new(Config conf) {
     LearnerCtx *ctx = malloc(sizeof(LearnerCtx));
     ctx->conf = conf;
     ctx->mps = 0;
     ctx->num_packets = 0;
-    ctx->values = malloc(ctx->conf.maxinst * sizeof(int));
-    int i;
-    for (i = 0; i < ctx->conf.maxinst; i++) {
-        ctx->values[i] = 0;
-    }
-    if (ctx->values == NULL) {
-        perror("Unable to allocate memory for values\n");
-    }
-    ctx->msg = malloc(sizeof(Message));
+    ctx->msg = malloc(sizeof(Message) + 1);
+    bzero(ctx->msg, sizeof(Message) + 1);
     if (ctx->msg == NULL) {
-        perror("Unable to allocate memory for msg\n");
-    }
-    ctx->padding = malloc(conf.padsize);
-    if (ctx->padding == NULL) {
         perror("Unable to allocate memory for msg\n");
     }
     return ctx;
 }
 
 void learner_ctx_destroy(LearnerCtx *ctx) {
-    free(ctx->values);
     free(ctx->msg);
-    free(ctx->padding);
     free(ctx);
 }
 
@@ -50,14 +38,7 @@ void signal_handler(evutil_socket_t fd, short what, void *arg) {
     LearnerCtx *ctx = (LearnerCtx *) arg;
     if (what&EV_SIGNAL) {
         event_base_loopbreak(ctx->base);
-        FILE *fp = fopen("learner.txt", "w+");
-        int i;
-        for (i = 0; i < ctx->conf.maxinst; i++) {
-            fprintf(fp, "%d\n", ctx->values[i]);
-        }
-        fprintf(fp, "num_packets: %d\n", ctx->num_packets);
-        if (fclose(fp) != 0)
-            perror("Close file error");
+        fprintf(stdout, "num_packets: %d\n", ctx->num_packets);
         learner_ctx_destroy(ctx);
     }
 }
@@ -65,7 +46,7 @@ void signal_handler(evutil_socket_t fd, short what, void *arg) {
 void monitor(evutil_socket_t fd, short what, void *arg) {
     LearnerCtx *ctx = (LearnerCtx *) arg;
     if ( ctx->mps ) {
-        printf("%d\n", ctx->mps);
+        fprintf(stdout, "%d\n", ctx->mps);
     }
     ctx->mps = 0;
 }
@@ -73,54 +54,21 @@ void monitor(evutil_socket_t fd, short what, void *arg) {
 void cb_func(evutil_socket_t fd, short what, void *arg)
 {
     LearnerCtx *ctx = (LearnerCtx *) arg;
-    struct timespec end, result;
     struct sockaddr_in remote;
     socklen_t remote_len = sizeof(remote);
-    double latency;
-    size_t msglen;
     int n;
-    if (ctx->conf.enable_paxos) {
-        Message msg;
-        n = recvfrom(fd, &msg, sizeof(msg), 0, (struct sockaddr *) &remote, &remote_len);
-        if (n < 0) {
-          perror("ERROR in recvfrom");
-          return;
-        }
-        unpack(&msg);
-        if (ctx->conf.verbose) print_message(msg);
 
-        if (msg.inst >= ctx->conf.maxinst) {
-            return;
-        }
-        ctx->values[msg.inst] = msg.value;
-        pack(&msg, ctx->msg);
-        msglen = sizeof(Message);
-        n = sendto(fd, ctx->msg, msglen, 0, (struct sockaddr*) &remote, remote_len);
-        if (n < 0) {
-            perror("ERROR in sendto");
-            return;
-        }
-
-    } else {
-        TimespecMessage msg;
-        n = recvfrom(fd, &msg, sizeof(msg), 0, (struct sockaddr *) &remote, &remote_len);
-        if (n < 0) {
-            perror("ERROR in recvfrom");
-            return;
-        }
-        n = sendto(fd, &msg, sizeof(msg), 0, (struct sockaddr*) &remote, remote_len);
-        if (n < 0) {
-            perror("ERROR in sendto");
-            return;
-        }
-    }
-
+    Message msg;
+    n = recvfrom(fd, &msg, sizeof(msg), 0, (struct sockaddr *) &remote, &remote_len);
+    if (n < 0) {perror("ERROR in recvfrom"); return; }
+    unpack(ctx->msg, &msg);
+    if (ctx->conf.verbose) print_message(ctx->msg);
+    if (msg.inst >= ctx->conf.maxinst) { return; }
+    n = sendto(fd, &msg, sizeof(Message), 0, (struct sockaddr*) &remote, remote_len);
+    if (n < 0) {perror("ERROR in sendto"); return; }
     ctx->mps++;
     ctx->num_packets++;
-
-    if (ctx->num_packets == ctx->conf.maxinst) {
-        raise(SIGTERM);
-    }
+    if (ctx->num_packets == ctx->conf.maxinst) { raise(SIGTERM); }
 }
 
 int start_learner(Config *conf) {
