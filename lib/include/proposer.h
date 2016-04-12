@@ -25,8 +25,4 @@ typedef struct ProposerCtx {
 } ProposerCtx;
 
 int start_proposer(Config *conf, void *(*result_cb)(void* arg));
-ProposerCtx *proposer_ctx_new(Config conf);
-void proposer_ctx_destroy(ProposerCtx *st);
-void submit(void *arg);
-void propose_value(ProposerCtx *ctx, void *arg);
 #endif

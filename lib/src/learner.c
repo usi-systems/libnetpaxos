@@ -16,6 +16,10 @@
 #include "config.h"
 
 
+int create_server_socket(int port);
+LearnerCtx *learner_ctx_new(Config conf);
+void learner_ctx_destroy(LearnerCtx *st);
+
 /* Here's a callback function that calls loop break */
 LearnerCtx *learner_ctx_new(Config conf) {
     LearnerCtx *ctx = malloc(sizeof(LearnerCtx));
@@ -96,38 +100,43 @@ void cb_func(evutil_socket_t fd, short what, void *arg)
     if (ctx->num_packets == ctx->conf.maxinst) { raise(SIGTERM); }
 }
 
+int create_server_socket(int port) {
+    int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sockfd < 0) {
+        perror("cannot create socket");
+        return EXIT_FAILURE;
+    }
+    struct sockaddr_in serv_addr;
+    bzero((char *) &serv_addr, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(port);
+    serv_addr.sin_addr.s_addr = INADDR_ANY;
+    if (bind(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
+        perror("ERROR on binding");
+        return EXIT_FAILURE;
+    }
+    return sockfd;
+}
+
 int start_learner(Config *conf, void *(*deliver_cb)(void* arg)) {
     LearnerCtx *ctx = learner_ctx_new(*conf);
     ctx->base = event_base_new();
     ctx->deliver = deliver_cb;
-    event_base_priority_init(ctx->base, 4);
-    int fd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (fd < 0) {
-        perror("cannot create socket");
-        return EXIT_FAILURE;
-    }
-
-    struct sockaddr_in serv_addr;
-    bzero((char *) &serv_addr, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(conf->learner_port);
-    serv_addr.sin_addr.s_addr = INADDR_ANY;
-    if (bind(fd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
-        perror("ERROR on binding");
-        return EXIT_FAILURE;
-    }
-    struct event *recv_ev, *monitor_ev, *evsig;
-    recv_ev = event_new(ctx->base, fd, EV_READ|EV_PERSIST, cb_func, ctx);
+    int server_socket = create_server_socket(conf->learner_port);
     struct timeval timeout = {1, 0};
+
+    struct event *recv_ev, *monitor_ev, *evsig;
+    recv_ev = event_new(ctx->base, server_socket, EV_READ|EV_PERSIST, cb_func, ctx);
     monitor_ev = event_new(ctx->base, -1, EV_TIMEOUT|EV_PERSIST, monitor, ctx);
     evsig = evsignal_new(ctx->base, SIGTERM, signal_handler, ctx);
+
+    event_base_priority_init(ctx->base, 4);
     event_priority_set(evsig, 0);
     event_priority_set(monitor_ev, 1);
     event_priority_set(recv_ev, 2);
     
     event_add(recv_ev, NULL);
     event_add(monitor_ev, &timeout);
-    /* Signal event to terminate event loop */
     event_add(evsig, NULL);
 
     event_base_dispatch(ctx->base);

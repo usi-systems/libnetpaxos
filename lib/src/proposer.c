@@ -23,20 +23,12 @@
 #include "config.h"
 
 #define BUF_SIZE 32
-// static char *rand_string(char *str, size_t size)
-// {
-//     const char charset[] = "QWERTYUIOPASDFGHJKLZXCVBNM!@#$^&*()1234567890";
-//     if (size) {
-//         --size;
-//         size_t n;
-//         for (n = 0; n < size; n++) {
-//             int key = rand() % (int) (sizeof charset - 1);
-//             str[n] = charset[key];
-//         }
-//         str[size] = '\0';
-//     }
-//     return str;
-// }
+
+ProposerCtx *proposer_ctx_new(Config conf);
+void proposer_ctx_destroy(ProposerCtx *st);
+void submit(void *arg);
+void propose_value(ProposerCtx *ctx, void *arg);
+
 
 static void
 echo_read_cb(struct bufferevent *bev, void *arg)
@@ -44,15 +36,11 @@ echo_read_cb(struct bufferevent *bev, void *arg)
     ProposerCtx *ctx = (ProposerCtx *) arg;
     /* This callback is invoked when there is data to read on bev. */
     struct evbuffer *input = bufferevent_get_input(bev);
-    // struct evbuffer *output = bufferevent_get_output(bev);
     size_t len = evbuffer_get_length(input);
     if (len) {
         evbuffer_remove(input, ctx->buf, len);
-        printf("Drained %lu bytes from %s\n", (unsigned long) len, ctx->buf);
         propose_value(ctx, ctx->buf);
     }
-    /* Copy all the data from the input buffer to the output buffer. */
-    // evbuffer_add_buffer(output, input);
 }
 
 static void

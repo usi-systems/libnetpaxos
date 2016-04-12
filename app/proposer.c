@@ -5,9 +5,7 @@
 #include "proposer.h"
 #include "config.h"
 
-
-
-void *result_cb(void* arg) {
+void *result_cb(void *arg) {
 
 }
 
