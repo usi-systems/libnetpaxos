@@ -31,11 +31,14 @@ LearnerCtx *learner_ctx_new(Config conf) {
     if (ctx->msg == NULL) {
         perror("Unable to allocate memory for msg\n");
     }
-    ctx->values = calloc(ctx->conf.maxinst, sizeof(char*));
+    ctx->states = calloc(ctx->conf.maxinst, sizeof(paxos_state*));
     int i;
     for (i = 0; i < ctx->conf.maxinst; i++) {
-        ctx->values[i] = malloc(PAXOS_VALUE_SIZE + 1);
-        bzero(ctx->values[i], PAXOS_VALUE_SIZE);
+        ctx->states[i] = malloc(sizeof(paxos_state*));
+        ctx->states[i]->rnd = 0;
+        ctx->states[i]->from = calloc(ctx->conf.num_acceptors, sizeof(int));
+        ctx->states[i]->paxosval = malloc(PAXOS_VALUE_SIZE + 1);
+        bzero(ctx->states[i]->paxosval, PAXOS_VALUE_SIZE);
     }
     char fname[32];
     int n = snprintf(fname, sizeof fname, "learner-%d.txt", conf.node_id);
@@ -51,9 +54,11 @@ void learner_ctx_destroy(LearnerCtx *ctx) {
     fclose(ctx->fp);
     free(ctx->msg);
     for (i = 0; i < ctx->conf.maxinst; i++) {
-        free(ctx->values[i]);
+        free(ctx->states[i]->from);
+        free(ctx->states[i]->paxosval);
+        free(ctx->states[i]);
     }
-    free(ctx->values);
+    free(ctx->states);
     free(ctx);
 }
 
@@ -63,7 +68,7 @@ void signal_handler(evutil_socket_t fd, short what, void *arg) {
         event_base_loopbreak(ctx->base);
         int i;
         for (i = 0; i < ctx->conf.maxinst; i++) {
-            fprintf(ctx->fp, "%s\n", ctx->values[i]);
+            fprintf(ctx->fp, "%s\n", ctx->states[i]->paxosval);
         }
         fprintf(stdout, "num_packets: %d\n", ctx->num_packets);
         learner_ctx_destroy(ctx);
@@ -89,7 +94,7 @@ void cb_func(evutil_socket_t fd, short what, void *arg)
     n = recvfrom(fd, &msg, sizeof(msg), 0, (struct sockaddr *) &remote, &remote_len);
     if (n < 0) {perror("ERROR in recvfrom"); return; }
     unpack(ctx->msg, &msg);
-    strcpy(ctx->values[ctx->msg->inst], ctx->msg->paxosval);
+    strcpy(ctx->states[ctx->msg->inst]->paxosval, ctx->msg->paxosval);
     ctx->deliver(ctx->msg->paxosval);
     if (ctx->conf.verbose) print_message(ctx->msg);
     if (msg.inst >= ctx->conf.maxinst) { return; }

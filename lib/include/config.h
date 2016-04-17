@@ -15,6 +15,7 @@ typedef struct Config {
     int padsize;
     int node_id;
     char server[64];
+    int num_acceptors;
 } Config;
 
 void print_config(Config *conf);

@@ -5,13 +5,22 @@
 #include "config.h"
 #include "message.h"
 
+
+typedef struct paxos_state {
+    int rnd;
+    int count;
+    int* from;
+    char* paxosval;
+} paxos_state;
+
+
 typedef struct LearnerCtx {
     struct event_base *base;
     Config conf;
     int mps;
     int num_packets;
     Message *msg;
-    char **values;
+    paxos_state* *states;
     FILE *fp;
     void *(*deliver)(void* arg);
 } LearnerCtx;

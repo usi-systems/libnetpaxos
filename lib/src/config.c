@@ -61,6 +61,9 @@ Config *parse_conf(char *config_file) {
         else if (strcmp(key, "PADSIZE") == 0) {
             conf->padsize = atoi(value);
         }
+        else if (strcmp(key, "NUM_ACCEPTORS") == 0) {
+            conf->num_acceptors = atoi(value);
+        }
     }
     fclose(fp);
     if (line)
