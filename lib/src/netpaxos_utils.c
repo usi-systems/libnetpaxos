@@ -7,6 +7,9 @@
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+
 #ifdef __MACH__
 #include <mach/clock.h>
 #include <mach/mach.h>
@@ -49,4 +52,32 @@ int compare_ts(struct timespec *time1, struct timespec *time2) {
             return (1) ;                /* Greater than */
         else
             return (0) ;                /* Equal */
+}
+
+int create_server_socket(int port) {
+    int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sockfd < 0) {
+        perror("cannot create socket");
+        return EXIT_FAILURE;
+    }
+    struct sockaddr_in serv_addr;
+    bzero((char *) &serv_addr, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(port);
+    serv_addr.sin_addr.s_addr = INADDR_ANY;
+    if (bind(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
+        perror("ERROR on binding");
+        return EXIT_FAILURE;
+    }
+    return sockfd;
+}
+
+void addMembership(char *group, int sockfd) {
+    struct ip_mreq mreq;
+    mreq.imr_multiaddr.s_addr = inet_addr(group);
+    mreq.imr_interface.s_addr = htonl(INADDR_ANY);
+    if (setsockopt(sockfd,IPPROTO_IP,IP_ADD_MEMBERSHIP,&mreq,sizeof(mreq))<0) {
+        perror("setsockopt mreq");
+        exit(1);
+    }
 }

@@ -7,12 +7,13 @@
 
 
 int main(int argc, char* argv[]) {
-    if (argc != 2) {
-        printf("%s config\n", argv[0]);
+    if (argc != 3) {
+        printf("%s config port\n", argv[0]);
         exit(EXIT_FAILURE);
     }
+    int port = atoi(argv[2]);
     Config *conf = parse_conf(argv[1]);
-    start_coordinator(conf);
+    start_coordinator(conf, port);
     free(conf);
     return (EXIT_SUCCESS);
 }

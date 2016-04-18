@@ -15,32 +15,34 @@ void print_message(Message *m) {
         "vround:   %d\n"
         "acceptor: %d\t"
         "paxosval: %s\n",
-        m->msgtype, m->inst, m->rnd, m->vrnd, m->acpid, m->paxosval);
+        m->msgtype, m->inst, m->rnd, m->vrnd, m->acptid, m->paxosval);
 }
 
 void pack(Message *dst, const Message *src) {
     dst->inst       = htonl(src->inst);
     dst->rnd        = htons(src->rnd);
     dst->vrnd       = htons(src->vrnd);
-    dst->acpid      = htons(src->acpid);
+    dst->acptid     = htons(src->acptid);
     dst->msgtype    = htons(src->msgtype);
     strcpy(dst->paxosval,   src->paxosval);
+    dst->client     = src->client;
 }
 
 void unpack(Message *dst, const Message *src) {
     dst->inst         = ntohl(src->inst);
     dst->rnd          = ntohs(src->rnd);
     dst->vrnd         = ntohs(src->vrnd);
-    dst->acpid        = ntohs(src->acpid);
+    dst->acptid       = ntohs(src->acptid);
     dst->msgtype      = ntohs(src->msgtype);
     strcpy(dst->paxosval,   src->paxosval);
+    dst->client     = src->client;
 }
 
 void initialize_message(Message *m, int msgtype) {
     m->inst     = 0;
     m->rnd      = 0;
     m->vrnd     = 0;
-    m->acpid    = 0;
+    m->acptid    = 0;
     m->msgtype  = msgtype;
     bzero(m->paxosval, PAXOS_VALUE_SIZE);
 }

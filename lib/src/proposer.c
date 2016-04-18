@@ -179,24 +179,6 @@ void propose_value(ProposerCtx *ctx, void *arg)
 
 }
 
-int create_server_socket(Config *conf) {
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (fd < 0) {
-        perror("cannot create socket");
-        return EXIT_FAILURE;
-    }
-    struct sockaddr_in serv_addr;
-    bzero((char *) &serv_addr, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(conf->proposer_port);
-    serv_addr.sin_addr.s_addr = INADDR_ANY;
-    if (bind(fd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
-        perror("ERROR on binding");
-        return EXIT_FAILURE;
-    }
-    evutil_make_socket_nonblocking(fd);
-    return fd;
-}
 
 int start_proposer(Config *conf, void *(*result_cb)(void* arg)) {
     ProposerCtx *ctx = proposer_ctx_new(*conf);
@@ -214,9 +196,9 @@ int start_proposer(Config *conf, void *(*result_cb)(void* arg)) {
     }
     ctx->learner_sock = learner_sock;
 
-    server = gethostbyname(conf->server);
+    server = gethostbyname(conf->learner_addr);
     if (server == NULL) {
-        fprintf(stderr, "ERROR, no such host as %s\n", conf->server);
+        fprintf(stderr, "ERROR, no such host as %s\n", conf->learner_addr);
         return EXIT_FAILURE;
     }
 

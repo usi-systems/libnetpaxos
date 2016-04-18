@@ -14,7 +14,8 @@ typedef struct Config {
     int paxos_msgtype;
     int padsize;
     int node_id;
-    char server[64];
+    char learner_addr[64];
+    char proposer_addr[64];
     int num_acceptors;
 } Config;
 

@@ -4,8 +4,8 @@
 #include "config.h"
 
 void print_config(Config *conf) {
-    printf("Role :%d, second: %d, microsecond: %d, verbose: %d, server: %s\n",
-        conf->role, conf->second, conf->microsecond, conf->verbose, conf->server);
+    printf("Role :%d, second: %d, microsecond: %d, verbose: %d, learner_addr: %s\n",
+        conf->role, conf->second, conf->microsecond, conf->verbose, conf->learner_addr);
 }
 
 Config *parse_conf(char *config_file) {
@@ -37,8 +37,11 @@ Config *parse_conf(char *config_file) {
         else if (strcmp(key, "MICROSECOND") == 0) {
             conf->microsecond = atoi(value);
         }
-        else if (strcmp(key, "SERVER") == 0) {
-            strcpy(conf->server, value);
+        else if (strcmp(key, "LEARNER_ADDR") == 0) {
+            strcpy(conf->learner_addr, value);
+        }
+        else if (strcmp(key, "PROPOSER_ADDR") == 0) {
+            strcpy(conf->proposer_addr, value);
         }
         else if (strcmp(key, "LEARNER_PORT") == 0) {
             conf->learner_port = atoi(value);

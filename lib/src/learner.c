@@ -9,6 +9,7 @@
 #include <strings.h>
 #include <inttypes.h>
 #include <signal.h>
+#include <math.h>
 #include <stdlib.h>
 #include "message.h"
 #include "learner.h"
@@ -26,6 +27,8 @@ LearnerCtx *learner_ctx_new(Config conf) {
     ctx->conf = conf;
     ctx->mps = 0;
     ctx->num_packets = 0;
+    double maj = ((double)(conf.num_acceptors + 1)) / 2;
+    ctx->maj = ceil(maj);
     ctx->msg = malloc(sizeof(Message) + 1);
     bzero(ctx->msg, sizeof(Message) + 1);
     if (ctx->msg == NULL) {
@@ -36,7 +39,9 @@ LearnerCtx *learner_ctx_new(Config conf) {
     for (i = 0; i < ctx->conf.maxinst; i++) {
         ctx->states[i] = malloc(sizeof(paxos_state*));
         ctx->states[i]->rnd = 0;
-        ctx->states[i]->from = calloc(ctx->conf.num_acceptors, sizeof(int));
+        ctx->states[i]->from = 0;
+        ctx->states[i]->count = 0;
+        ctx->states[i]->finished = 0;
         ctx->states[i]->paxosval = malloc(PAXOS_VALUE_SIZE + 1);
         bzero(ctx->states[i]->paxosval, PAXOS_VALUE_SIZE);
     }
@@ -54,7 +59,6 @@ void learner_ctx_destroy(LearnerCtx *ctx) {
     fclose(ctx->fp);
     free(ctx->msg);
     for (i = 0; i < ctx->conf.maxinst; i++) {
-        free(ctx->states[i]->from);
         free(ctx->states[i]->paxosval);
         free(ctx->states[i]);
     }
@@ -83,6 +87,39 @@ void monitor(evutil_socket_t fd, short what, void *arg) {
     ctx->mps = 0;
 }
 
+
+void handle_accepted(LearnerCtx *ctx, Message *msg, evutil_socket_t fd) {
+    paxos_state *state = ctx->states[msg->inst];
+
+    if (msg->rnd == state->rnd) {
+        int mask = 1 << msg->acptid;
+        int exist = state->from & mask;
+
+        if (!exist) {
+            state->from = state->from | mask;
+            state->count++;
+            strcpy(state->paxosval, ctx->msg->paxosval);
+            printf("instance: %d - count %d\n", msg->inst, state->count);
+            if (state->count == ctx->maj) { // Chosen value
+                state->finished = 1;        // Marked values has been chosen
+                printf("deliver %d\n", msg->inst);
+                ctx->deliver(state->paxosval); 
+
+                char res[] = "ACKED";
+                int n = sendto(fd, res, strlen(res), 0, (struct sockaddr*) &msg->client, sizeof(msg->client));
+                if (n < 0) {perror("ERROR in sendto"); return; }
+
+            }
+        }
+    } else if (msg->rnd > state->rnd) {
+        state->rnd = msg->rnd;
+        int mask = 1 << msg->acptid;
+        state->from = state->from | mask;
+        state->count = 1;
+        strcpy(state->paxosval, ctx->msg->paxosval);
+    }
+}
+
 void cb_func(evutil_socket_t fd, short what, void *arg)
 {
     LearnerCtx *ctx = (LearnerCtx *) arg;
@@ -93,41 +130,32 @@ void cb_func(evutil_socket_t fd, short what, void *arg)
     Message msg;
     n = recvfrom(fd, &msg, sizeof(msg), 0, (struct sockaddr *) &remote, &remote_len);
     if (n < 0) {perror("ERROR in recvfrom"); return; }
+
     unpack(ctx->msg, &msg);
-    strcpy(ctx->states[ctx->msg->inst]->paxosval, ctx->msg->paxosval);
-    ctx->deliver(ctx->msg->paxosval);
     if (ctx->conf.verbose) print_message(ctx->msg);
-    if (msg.inst >= ctx->conf.maxinst) { return; }
+    if (ctx->msg->inst > ctx->conf.maxinst) {
+        fprintf(stderr, "State Overflow\n");
+        return;
+    }
+
+    handle_accepted(ctx, ctx->msg, fd);
+
+    // ctx->deliver(ctx->msg->paxosval);
     n = sendto(fd, &msg, sizeof(Message), 0, (struct sockaddr*) &remote, remote_len);
     if (n < 0) {perror("ERROR in sendto"); return; }
     ctx->mps++;
     ctx->num_packets++;
-    if (ctx->num_packets == ctx->conf.maxinst) { raise(SIGTERM); }
+    // if (ctx->num_packets == ctx->conf.maxinst) { raise(SIGTERM); }
 }
 
-int create_server_socket(int port) {
-    int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sockfd < 0) {
-        perror("cannot create socket");
-        return EXIT_FAILURE;
-    }
-    struct sockaddr_in serv_addr;
-    bzero((char *) &serv_addr, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(port);
-    serv_addr.sin_addr.s_addr = INADDR_ANY;
-    if (bind(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
-        perror("ERROR on binding");
-        return EXIT_FAILURE;
-    }
-    return sockfd;
-}
 
 int start_learner(Config *conf, void *(*deliver_cb)(void* arg)) {
     LearnerCtx *ctx = learner_ctx_new(*conf);
     ctx->base = event_base_new();
     ctx->deliver = deliver_cb;
     int server_socket = create_server_socket(conf->learner_port);
+    addMembership(conf->learner_addr, server_socket);
+
     struct timeval timeout = {1, 0};
 
     struct event *recv_ev, *monitor_ev, *evsig;

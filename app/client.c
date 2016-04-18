@@ -26,20 +26,30 @@ struct address {
 };
 
 void on_response(evutil_socket_t fd, short what, void *arg) {
+    struct sockaddr_in remote;
+    socklen_t remote_len = sizeof(remote);
+    char recvbuf[BUF_SIZE]; 
+    int n = recvfrom(fd, recvbuf, BUF_SIZE, 0, (struct sockaddr *) &remote, &remote_len);
+    if (n < 0) {
+      perror("ERROR in recvfrom");
+      return;
+    }
+    printf("on value: %s: %d length, addr_length: %d\n", recvbuf, n, remote_len);
 
 }
 
 void on_timeout(evutil_socket_t fd, short what, void *arg) {
     struct address *addr = (struct address*) arg;
     socklen_t len = sizeof(struct sockaddr_in);
-    char msg[] = "Put (key, value)";
+    // Warning: Fit message in 16 Bytes
+    char msg[] = "Put (key, val)";
     int n = sendto(fd, msg, sizeof(msg), 0, (struct sockaddr*) addr->addr, len);
     if (n < 0) {
         perror("ERROR in sendto");
         return;
     }
-
 }
+
 
 int main(int argc, char* argv[]) {
     if (argc != 3) {
@@ -78,8 +88,8 @@ int main(int argc, char* argv[]) {
     ev_recv = event_new(base, sock, EV_READ|EV_PERSIST, on_response, addr);
 
     struct event *ev_send;
-    ev_send = event_new(base, sock, EV_TIMEOUT|EV_PERSIST, on_timeout, addr);
-    struct timeval period = {1, 0};
+    ev_send = event_new(base, sock, EV_TIMEOUT, on_timeout, addr);
+    struct timeval period = {0, 500000};
 
     event_add(ev_recv, NULL);
     event_add(ev_send, &period);

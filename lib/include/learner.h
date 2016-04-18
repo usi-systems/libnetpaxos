@@ -9,7 +9,8 @@
 typedef struct paxos_state {
     int rnd;
     int count;
-    int* from;
+    int from;
+    int finished;
     char* paxosval;
 } paxos_state;
 
@@ -19,6 +20,7 @@ typedef struct LearnerCtx {
     Config conf;
     int mps;
     int num_packets;
+    int maj;
     Message *msg;
     paxos_state* *states;
     FILE *fp;

@@ -17,6 +17,6 @@ typedef struct CoordinatorCtx {
     char *padding;
 } CoordinatorCtx;
 
-int start_coordinator(Config *conf);
+int start_coordinator(Config *conf, int port);
 
 #endif

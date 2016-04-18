@@ -8,5 +8,7 @@ void gettime(struct timespec * ts);
 int timediff(struct timespec *result, struct timespec *start, struct timespec *end);
 int compare_ts(struct timespec *time1, struct timespec *time2);
 int timeval_subtract (struct timeval *result, struct timeval *start, struct timeval *end);
+int create_server_socket(int port);
+void addMembership(char *group, int sockfd);
 
 #endif

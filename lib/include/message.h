@@ -9,10 +9,11 @@ typedef struct Message {
     uint32_t inst;
     uint16_t rnd;
     uint16_t vrnd;
-    uint16_t acpid;
+    uint16_t acptid;
     uint16_t msgtype;
     // Fixed value size: 32 Bytes
     char paxosval[PAXOS_VALUE_SIZE-1];
+    struct sockaddr_in client;
 } Message;
 
 
