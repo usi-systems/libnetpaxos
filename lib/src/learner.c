@@ -131,15 +131,16 @@ void cb_func(evutil_socket_t fd, short what, void *arg)
 
     n = recvfrom(fd, &msg, 60, 0, (struct sockaddr *) &remote, &remote_len);
     if (n < 0) {perror("ERROR in recvfrom"); return; }
-
-    printf("Received %d bytes\n", n);
-
     unpack(ctx->msg, &msg);
-    if (ctx->conf.verbose)
-        print_message(&msg);
+    if (ctx->conf.verbose) {
+        printf("Received %d bytes from %s:%d\n", n, inet_ntoa(remote.sin_addr),
+                ntohs(remote.sin_port));
         print_message(ctx->msg);
+    }
     if (ctx->msg->inst > ctx->conf.maxinst) {
-        fprintf(stderr, "State Overflow\n");
+        if (ctx->conf.verbose) {
+            fprintf(stderr, "State Overflow\n");
+        }
         return;
     }
 

@@ -42,16 +42,16 @@ void on_response(evutil_socket_t fd, short what, void *arg) {
         struct sockaddr_in remote;
         socklen_t remote_len = sizeof(remote);
         char recvbuf[BUF_SIZE];
-        int n = recvfrom(fd, recvbuf, BUF_SIZE, 0, (struct sockaddr *) state->proposer, &remote_len);
+        int n = recvfrom(fd, recvbuf, BUF_SIZE, 0, (struct sockaddr *) &remote, &remote_len);
         if (n < 0) {
           perror("ERROR in recvfrom");
           return;
         }
-        printf("on value: %s: %d length, addr_length: %d\n", recvbuf, n, remote_len);
+        // printf("on value: %s: %d length, addr_length: %d\n", recvbuf, n, remote_len);
         send_message(fd, state->proposer);
         state->mps++;
     } else if (what&EV_TIMEOUT) {
-        printf("on timeout, send.\n");
+        // printf("on timeout, send.\n");
         send_message(fd, state->proposer);
     }
 }
@@ -80,7 +80,7 @@ int main(int argc, char* argv[]) {
     }
     struct client_state *state = client_state_new();
     struct event_base *base = event_base_new();
-    struct sockaddr_in *learner_addr = malloc(sizeof (struct sockaddr_in));
+    struct sockaddr_in *proposer = malloc(sizeof (struct sockaddr_in));
     // socket to send Paxos messages to learners
     int sock = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock < 0) {
@@ -96,13 +96,13 @@ int main(int argc, char* argv[]) {
         return EXIT_FAILURE;
     }
     /* build the server's Internet address */
-    bzero((char *) learner_addr, sizeof(struct sockaddr_in));
-    learner_addr->sin_family = AF_INET;
+    bzero((char *) proposer, sizeof(struct sockaddr_in));
+    proposer->sin_family = AF_INET;
     bcopy((char *)server->h_addr,
-      (char *)&(learner_addr->sin_addr.s_addr), server->h_length);
-    learner_addr->sin_port = htons(port);
+      (char *)&(proposer->sin_addr.s_addr), server->h_length);
+    proposer->sin_port = htons(port);
 
-    state->proposer = learner_addr;
+    state->proposer = proposer;
 
     struct event *ev_recv;
     struct timeval period = {1, 0};

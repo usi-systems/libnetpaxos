@@ -77,7 +77,9 @@ void propose_value(CoordinatorCtx *ctx, void *arg, int size, struct sockaddr_in 
         perror("ERROR in sendto");
         return;
     }
-    printf("Send %d bytes.\n", n);
+    if (ctx->conf.verbose) {
+        printf("Send %d bytes.\n", n);
+    }
 
     ctx->cur_inst++;
 }
@@ -112,7 +114,7 @@ int start_coordinator(Config *conf, int port) {
 
     struct event *ev_recv;
     int listen_socket = create_server_socket(port);
-    // addMembership(conf->proposer_addr, listen_socket);
+    addMembership(conf->proposer_addr, listen_socket);
     ev_recv = event_new(ctx->base, listen_socket, EV_READ|EV_PERSIST, on_value, ctx);
 
     event_add(ev_recv, NULL);
