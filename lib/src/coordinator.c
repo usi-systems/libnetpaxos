@@ -30,8 +30,6 @@ CoordinatorCtx *proposer_ctx_new(Config conf) {
     CoordinatorCtx *ctx = malloc(sizeof(CoordinatorCtx));
     ctx->conf = conf;
     ctx->cur_inst = 0;
-    // TODO: Pass port number as in configuration
-    ctx->listen_port = 12345;
     ctx->buf = malloc(BUF_SIZE);
     ctx->msg = malloc(sizeof(Message)); 
     bzero(ctx->msg, sizeof(Message));
@@ -68,14 +66,19 @@ void propose_value(CoordinatorCtx *ctx, void *arg, int size, struct sockaddr_in 
         return;
     }
     msg.inst = ctx->cur_inst;
-    strncpy(msg.paxosval, v, size);
+
+    int maxlen = ( size < PAXOS_VALUE_SIZE ? size : PAXOS_VALUE_SIZE - 1);
+    strncpy(msg.paxosval, v, maxlen);
 
     pack(ctx->msg, &msg);
-    if (sendto(ctx->sock, ctx->msg, sizeof(Message), 0, 
-            (struct sockaddr*) ctx->learner_addr, serverlen) < 0) {
+
+    int n = sendto(ctx->sock, ctx->msg, sizeof(Message), 0, (struct sockaddr*) ctx->learner_addr, serverlen);
+    if (n < 0) {
         perror("ERROR in sendto");
         return;
     }
+    printf("Send %d bytes.\n", n);
+
     ctx->cur_inst++;
 }
 
@@ -109,7 +112,7 @@ int start_coordinator(Config *conf, int port) {
 
     struct event *ev_recv;
     int listen_socket = create_server_socket(port);
-    addMembership(conf->proposer_addr, listen_socket);
+    // addMembership(conf->proposer_addr, listen_socket);
     ev_recv = event_new(ctx->base, listen_socket, EV_READ|EV_PERSIST, on_value, ctx);
 
     event_add(ev_recv, NULL);

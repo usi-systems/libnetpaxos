@@ -29,8 +29,8 @@ LearnerCtx *learner_ctx_new(Config conf) {
     ctx->num_packets = 0;
     double maj = ((double)(conf.num_acceptors + 1)) / 2;
     ctx->maj = ceil(maj);
-    ctx->msg = malloc(sizeof(Message) + 1);
-    bzero(ctx->msg, sizeof(Message) + 1);
+    ctx->msg = malloc(sizeof(Message));
+    bzero(ctx->msg, sizeof(Message));
     if (ctx->msg == NULL) {
         perror("Unable to allocate memory for msg\n");
     }
@@ -42,7 +42,7 @@ LearnerCtx *learner_ctx_new(Config conf) {
         ctx->states[i]->from = 0;
         ctx->states[i]->count = 0;
         ctx->states[i]->finished = 0;
-        ctx->states[i]->paxosval = malloc(PAXOS_VALUE_SIZE + 1);
+        ctx->states[i]->paxosval = malloc(PAXOS_VALUE_SIZE);
         bzero(ctx->states[i]->paxosval, PAXOS_VALUE_SIZE);
     }
     char fname[32];
@@ -99,10 +99,10 @@ void handle_accepted(LearnerCtx *ctx, Message *msg, evutil_socket_t fd) {
             state->from = state->from | mask;
             state->count++;
             strcpy(state->paxosval, ctx->msg->paxosval);
-            printf("instance: %d - count %d\n", msg->inst, state->count);
+            // printf("instance: %d - count %d\n", msg->inst, state->count);
             if (state->count == ctx->maj) { // Chosen value
                 state->finished = 1;        // Marked values has been chosen
-                printf("deliver %d\n", msg->inst);
+                // printf("deliver %d\n", msg->inst);
                 ctx->deliver(state->paxosval); 
 
                 char res[] = "ACKED";
@@ -128,11 +128,16 @@ void cb_func(evutil_socket_t fd, short what, void *arg)
     int n;
 
     Message msg;
-    n = recvfrom(fd, &msg, sizeof(msg), 0, (struct sockaddr *) &remote, &remote_len);
+
+    n = recvfrom(fd, &msg, 60, 0, (struct sockaddr *) &remote, &remote_len);
     if (n < 0) {perror("ERROR in recvfrom"); return; }
 
+    printf("Received %d bytes\n", n);
+
     unpack(ctx->msg, &msg);
-    if (ctx->conf.verbose) print_message(ctx->msg);
+    if (ctx->conf.verbose)
+        print_message(&msg);
+        print_message(ctx->msg);
     if (ctx->msg->inst > ctx->conf.maxinst) {
         fprintf(stderr, "State Overflow\n");
         return;

@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <time.h>
 
-#define PAXOS_VALUE_SIZE 33
+#define PAXOS_VALUE_SIZE 32
 
 typedef struct Message {
     uint32_t inst;
@@ -12,7 +12,7 @@ typedef struct Message {
     uint16_t acptid;
     uint16_t msgtype;
     // Fixed value size: 32 Bytes
-    char paxosval[PAXOS_VALUE_SIZE-1];
+    char paxosval[PAXOS_VALUE_SIZE];
     struct sockaddr_in client;
 } Message;
 

@@ -19,44 +19,66 @@
 #include <errno.h>
 
 #define BUF_SIZE 1500
+void send_message(evutil_socket_t fd, struct sockaddr_in *addr);
 
-struct address {
-    struct sockaddr_in *addr;
-    int port;
+
+struct client_state {
+    int mps;
+    struct sockaddr_in *proposer;
 };
 
-void on_response(evutil_socket_t fd, short what, void *arg) {
-    struct sockaddr_in remote;
-    socklen_t remote_len = sizeof(remote);
-    char recvbuf[BUF_SIZE]; 
-    int n = recvfrom(fd, recvbuf, BUF_SIZE, 0, (struct sockaddr *) &remote, &remote_len);
-    if (n < 0) {
-      perror("ERROR in recvfrom");
-      return;
+void monitor(evutil_socket_t fd, short what, void *arg) {
+    struct client_state *state = (struct client_state *) arg;
+    if ( state->mps ) {
+        fprintf(stdout, "%d\n", state->mps);
     }
-    printf("on value: %s: %d length, addr_length: %d\n", recvbuf, n, remote_len);
-
+    state->mps = 0;
 }
 
-void on_timeout(evutil_socket_t fd, short what, void *arg) {
-    struct address *addr = (struct address*) arg;
+
+void on_response(evutil_socket_t fd, short what, void *arg) {
+    struct client_state *state = (struct client_state*) arg;
+    if (what&EV_READ) {
+        struct sockaddr_in remote;
+        socklen_t remote_len = sizeof(remote);
+        char recvbuf[BUF_SIZE];
+        int n = recvfrom(fd, recvbuf, BUF_SIZE, 0, (struct sockaddr *) state->proposer, &remote_len);
+        if (n < 0) {
+          perror("ERROR in recvfrom");
+          return;
+        }
+        printf("on value: %s: %d length, addr_length: %d\n", recvbuf, n, remote_len);
+        send_message(fd, state->proposer);
+        state->mps++;
+    } else if (what&EV_TIMEOUT) {
+        printf("on timeout, send.\n");
+        send_message(fd, state->proposer);
+    }
+}
+
+void send_message(evutil_socket_t fd, struct sockaddr_in *addr) {
     socklen_t len = sizeof(struct sockaddr_in);
     // Warning: Fit message in 16 Bytes
     char msg[] = "Put (key, val)";
-    int n = sendto(fd, msg, sizeof(msg), 0, (struct sockaddr*) addr->addr, len);
+    int n = sendto(fd, msg, sizeof(msg), 0, (struct sockaddr*) addr, len);
     if (n < 0) {
         perror("ERROR in sendto");
         return;
     }
 }
 
+struct client_state* client_state_new() {
+    struct client_state *state = malloc(sizeof(struct client_state*));
+    state->mps = 0;
+    return state;
+}
 
 int main(int argc, char* argv[]) {
     if (argc != 3) {
         printf("Usage: %s address port\n", argv[0]);
         exit(EXIT_FAILURE);
     }
-
+    struct client_state *state = client_state_new();
     struct event_base *base = event_base_new();
     struct sockaddr_in *learner_addr = malloc(sizeof (struct sockaddr_in));
     // socket to send Paxos messages to learners
@@ -80,19 +102,17 @@ int main(int argc, char* argv[]) {
       (char *)&(learner_addr->sin_addr.s_addr), server->h_length);
     learner_addr->sin_port = htons(port);
 
-    struct address *addr = malloc(sizeof(struct address));
-    addr->addr = learner_addr;
-    addr->port = port;
+    state->proposer = learner_addr;
 
     struct event *ev_recv;
-    ev_recv = event_new(base, sock, EV_READ|EV_PERSIST, on_response, addr);
+    struct timeval period = {1, 0};
+    ev_recv = event_new(base, sock, EV_READ|EV_TIMEOUT|EV_PERSIST, on_response, state);
+    struct event *ev_monitor;
+    ev_monitor = event_new(base, -1, EV_TIMEOUT|EV_PERSIST, monitor, state);
 
-    struct event *ev_send;
-    ev_send = event_new(base, sock, EV_TIMEOUT, on_timeout, addr);
-    struct timeval period = {0, 500000};
 
-    event_add(ev_recv, NULL);
-    event_add(ev_send, &period);
+    event_add(ev_recv, &period);
+    event_add(ev_monitor, &period);
 
     event_base_dispatch(base);
     close(sock);

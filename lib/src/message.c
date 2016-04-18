@@ -24,7 +24,7 @@ void pack(Message *dst, const Message *src) {
     dst->vrnd       = htons(src->vrnd);
     dst->acptid     = htons(src->acptid);
     dst->msgtype    = htons(src->msgtype);
-    strcpy(dst->paxosval,   src->paxosval);
+    strncpy(dst->paxosval,   src->paxosval, PAXOS_VALUE_SIZE - 1);
     dst->client     = src->client;
 }
 
@@ -34,8 +34,8 @@ void unpack(Message *dst, const Message *src) {
     dst->vrnd         = ntohs(src->vrnd);
     dst->acptid       = ntohs(src->acptid);
     dst->msgtype      = ntohs(src->msgtype);
-    strcpy(dst->paxosval,   src->paxosval);
-    dst->client     = src->client;
+    strncpy(dst->paxosval,   src->paxosval, PAXOS_VALUE_SIZE - 1);
+    dst->client       = src->client;
 }
 
 void initialize_message(Message *m, int msgtype) {
