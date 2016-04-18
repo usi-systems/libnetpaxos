@@ -16,12 +16,16 @@ message(STATUS "Extra libs " ${EXTRA_LIBS})
 add_library (Libperf ${SOURCE_FILES})
 target_link_libraries (Libperf ${EXTRA_LIBS})
 
+# leveldb
+include_directories(leveldb/include)
+link_directories(leveldb/out-shared)
 
 file( GLOB APP_SOURCES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} app/*.c )
+
 foreach( appfile ${APP_SOURCES} )
     get_filename_component( filename ${appfile} NAME )
     string( REPLACE ".c" "" app ${filename} )
     MESSAGE( ${app} )
     add_executable( ${app} ${appfile} )
-    target_link_libraries( ${app} Libperf -lm)
+    target_link_libraries( ${app} Libperf leveldb -lm)
 endforeach( appfile ${APP_SOURCES} )
