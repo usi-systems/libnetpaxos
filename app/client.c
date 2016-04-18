@@ -17,6 +17,7 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <errno.h>
+#include "netpaxos_utils.h"
 
 #define BUF_SIZE 1500
 void send_message(evutil_socket_t fd, struct sockaddr_in *addr);
@@ -25,7 +26,21 @@ void send_message(evutil_socket_t fd, struct sockaddr_in *addr);
 struct client_state {
     int mps;
     struct sockaddr_in *proposer;
+    struct timespec send_time;
+    struct event_base *base;
+    FILE *fp;
 };
+
+void signal_handler(evutil_socket_t fd, short what, void *arg) {
+    struct client_state *state = (struct client_state*) arg;
+    if (what&EV_SIGNAL) {
+        event_base_loopbreak(state->base);
+        fclose(state->fp);
+        free(state->proposer);
+        free(state);
+    }
+}
+
 
 void monitor(evutil_socket_t fd, short what, void *arg) {
     struct client_state *state = (struct client_state *) arg;
@@ -38,6 +53,7 @@ void monitor(evutil_socket_t fd, short what, void *arg) {
 
 void on_response(evutil_socket_t fd, short what, void *arg) {
     struct client_state *state = (struct client_state*) arg;
+    struct timespec recv_time, result;
     if (what&EV_READ) {
         struct sockaddr_in remote;
         socklen_t remote_len = sizeof(remote);
@@ -47,12 +63,22 @@ void on_response(evutil_socket_t fd, short what, void *arg) {
           perror("ERROR in recvfrom");
           return;
         }
+        gettime(&recv_time);
+        int negative = timediff(&result, &recv_time, &state->send_time);
+        if (negative) {
+            fprintf(stderr, "Latency is negative\n");
+        } else {
+            double latency = (result.tv_sec + ((double)result.tv_nsec) / 1e9);
+            fprintf(state->fp, "%.9f\n", latency);
+        }
         // printf("on value: %s: %d length, addr_length: %d\n", recvbuf, n, remote_len);
         send_message(fd, state->proposer);
+        gettime(&state->send_time);
         state->mps++;
     } else if (what&EV_TIMEOUT) {
         // printf("on timeout, send.\n");
         send_message(fd, state->proposer);
+        gettime(&state->send_time);
     }
 }
 
@@ -68,18 +94,18 @@ void send_message(evutil_socket_t fd, struct sockaddr_in *addr) {
 }
 
 struct client_state* client_state_new() {
-    struct client_state *state = malloc(sizeof(struct client_state*));
+    struct client_state *state = malloc(sizeof(struct client_state));
     state->mps = 0;
     return state;
 }
 
 int main(int argc, char* argv[]) {
-    if (argc != 3) {
-        printf("Usage: %s address port\n", argv[0]);
+    if (argc < 4) {
+        printf("Usage: %s address port output\n", argv[0]);
         exit(EXIT_FAILURE);
     }
     struct client_state *state = client_state_new();
-    struct event_base *base = event_base_new();
+    state->base = event_base_new();
     struct sockaddr_in *proposer = malloc(sizeof (struct sockaddr_in));
     // socket to send Paxos messages to learners
     int sock = socket(AF_INET, SOCK_DGRAM, 0);
@@ -89,12 +115,12 @@ int main(int argc, char* argv[]) {
     }
 
     struct hostent *server = gethostbyname(argv[1]);
-    int port = atoi(argv[2]);
 
     if (server == NULL) {
         fprintf(stderr, "ERROR, no such host as %s\n", argv[1]);
         return EXIT_FAILURE;
     }
+    int port = atoi(argv[2]);
     /* build the server's Internet address */
     bzero((char *) proposer, sizeof(struct sockaddr_in));
     proposer->sin_family = AF_INET;
@@ -103,18 +129,18 @@ int main(int argc, char* argv[]) {
     proposer->sin_port = htons(port);
 
     state->proposer = proposer;
+    state->fp = fopen(argv[3], "w+");
 
     struct event *ev_recv;
     struct timeval period = {1, 0};
-    ev_recv = event_new(base, sock, EV_READ|EV_TIMEOUT|EV_PERSIST, on_response, state);
+    ev_recv = event_new(state->base, sock, EV_READ|EV_TIMEOUT|EV_PERSIST, on_response, state);
     struct event *ev_monitor;
-    ev_monitor = event_new(base, -1, EV_TIMEOUT|EV_PERSIST, monitor, state);
-
+    ev_monitor = event_new(state->base, -1, EV_TIMEOUT|EV_PERSIST, monitor, state);
 
     event_add(ev_recv, &period);
     event_add(ev_monitor, &period);
 
-    event_base_dispatch(base);
+    event_base_dispatch(state->base);
     close(sock);
     return EXIT_SUCCESS;
 }

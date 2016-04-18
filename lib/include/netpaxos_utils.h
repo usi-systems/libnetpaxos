@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 void gettime(struct timespec * ts);
-int timediff(struct timespec *result, struct timespec *start, struct timespec *end);
+int timediff(struct timespec *result, struct timespec *end, struct timespec *start);
 int compare_ts(struct timespec *time1, struct timespec *time2);
 int timeval_subtract (struct timeval *result, struct timeval *start, struct timeval *end);
 int create_server_socket(int port);

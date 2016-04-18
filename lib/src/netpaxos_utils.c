@@ -31,13 +31,13 @@ void gettime(struct timespec * ts) {
 #endif
 }
 
-int timediff(struct timespec *result, struct timespec *x, struct timespec *y)
+int timediff(struct timespec *result, struct timespec *end, struct timespec *start)
 {
-  result->tv_sec = x->tv_sec - y->tv_sec;
-  result->tv_nsec = x->tv_nsec - y->tv_nsec;
+  result->tv_sec = end->tv_sec - start->tv_sec;
+  result->tv_nsec = end->tv_nsec - start->tv_nsec;
 
   /* Return 1 if result is negative. */
-  return x->tv_sec < y->tv_sec;
+  return end->tv_sec < start->tv_sec;
 }
 
 
