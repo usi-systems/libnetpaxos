@@ -49,7 +49,9 @@ void on_value(evutil_socket_t fd, short what, void *arg)
           perror("ERROR in recvfrom");
           return;
         }
-        printf("on value: %s: %d length, addr_length: %d\n", recvbuf, n, remote_len);
+        if (ctx->conf.verbose) {
+            printf("on value: %s: %d length, addr_length: %d\n", recvbuf, n, remote_len);
+        }
         propose_value(ctx, recvbuf, n, remote);
     }
 }

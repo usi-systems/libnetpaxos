@@ -7,7 +7,7 @@
 
 void *deliver(void *arg) {
     char *value = (char *)arg;
-    printf("delivered %s\n", value);
+    // printf("delivered %s\n", value);
 }
 
 int main(int argc, char* argv[]) {
