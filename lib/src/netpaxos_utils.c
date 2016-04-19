@@ -9,11 +9,11 @@
 #include <limits.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include "netpaxos_utils.h"
 
 #ifdef __MACH__
 #include <mach/clock.h>
 #include <mach/mach.h>
-
 #endif
 
 void gettime(struct timespec * ts) {
@@ -58,7 +58,7 @@ int create_server_socket(int port) {
     int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
     if (sockfd < 0) {
         perror("cannot create socket");
-        return EXIT_FAILURE;
+        exit(EXIT_FAILURE);
     }
     struct sockaddr_in serv_addr;
     bzero((char *) &serv_addr, sizeof(serv_addr));
@@ -67,8 +67,11 @@ int create_server_socket(int port) {
     serv_addr.sin_addr.s_addr = INADDR_ANY;
     if (bind(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
         perror("ERROR on binding");
-        return EXIT_FAILURE;
+        exit(EXIT_FAILURE);
     }
+    setReuseAddr(sockfd);
+    setRcvBuf(sockfd);
+    printf("Listening on port %d.\n", port);
     return sockfd;
 }
 
@@ -78,6 +81,26 @@ void addMembership(char *group, int sockfd) {
     mreq.imr_interface.s_addr = htonl(INADDR_ANY);
     if (setsockopt(sockfd,IPPROTO_IP,IP_ADD_MEMBERSHIP,&mreq,sizeof(mreq))<0) {
         perror("setsockopt mreq");
-        exit(1);
+        exit(EXIT_FAILURE);
+    }
+}
+
+
+void setReuseAddr(int sockfd) {
+    int yes = 1;
+    if ( setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1 )
+    {
+        perror("set reuseport");
+        exit(EXIT_FAILURE);
+    }
+}
+
+void setRcvBuf(int sockfd) {
+    int rcvbuf = 16777216;
+    socklen_t size = sizeof(sockfd);
+    if ( setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, (void *)&rcvbuf, size) == -1 )
+    {
+        perror("get RcvBuf");
+        exit(EXIT_FAILURE);
     }
 }

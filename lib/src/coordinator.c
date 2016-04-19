@@ -53,6 +53,7 @@ void on_value(evutil_socket_t fd, short what, void *arg)
             printf("on value: %s: %d length, addr_length: %d\n", recvbuf, n, remote_len);
         }
         propose_value(ctx, recvbuf, n, remote);
+        memset(recvbuf, 0, BUF_SIZE);
     }
 }
 
@@ -60,9 +61,9 @@ void on_value(evutil_socket_t fd, short what, void *arg)
 void propose_value(CoordinatorCtx *ctx, void *arg, int size, struct sockaddr_in client)
 {
     char *v = (char*) arg;
-    socklen_t serverlen = sizeof(*ctx->learner_addr);
+    socklen_t serverlen = sizeof(*ctx->acceptor_addr);
     Message msg;
-    initialize_message(&msg, ctx->conf.paxos_msgtype);
+    initialize_message(&msg, phase2a);
     msg.client = client;
     if (ctx->cur_inst >= ctx->conf.maxinst) {
         return;
@@ -74,13 +75,14 @@ void propose_value(CoordinatorCtx *ctx, void *arg, int size, struct sockaddr_in 
 
     pack(ctx->msg, &msg);
 
-    int n = sendto(ctx->sock, ctx->msg, sizeof(Message), 0, (struct sockaddr*) ctx->learner_addr, serverlen);
+    int n = sendto(ctx->sock, ctx->msg, sizeof(Message), 0, (struct sockaddr*) ctx->acceptor_addr, serverlen);
     if (n < 0) {
         perror("ERROR in sendto");
         return;
     }
     if (ctx->conf.verbose) {
-        printf("Send %d bytes.\n", n);
+        printf("Send %d bytes to %s:%d\n", n, inet_ntoa(ctx->acceptor_addr->sin_addr),
+                            ntohs(ctx->acceptor_addr->sin_port));
     }
 
     ctx->cur_inst++;
@@ -91,9 +93,9 @@ int start_coordinator(Config *conf, int port) {
     ctx->base = event_base_new();
     struct hostent *server;
     int serverlen;
-    ctx->learner_addr = malloc( sizeof (struct sockaddr_in) );
+    ctx->acceptor_addr = malloc( sizeof (struct sockaddr_in) );
 
-    // socket to send Paxos messages to learners
+    // socket to send Paxos messages to acceptors
     int sock = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock < 0) {
         perror("cannot create socket");
@@ -101,18 +103,18 @@ int start_coordinator(Config *conf, int port) {
     }
     ctx->sock = sock;
 
-    server = gethostbyname(conf->learner_addr);
+    server = gethostbyname(conf->acceptor_addr);
     if (server == NULL) {
-        fprintf(stderr, "ERROR, no such host as %s\n", conf->learner_addr);
+        fprintf(stderr, "ERROR, no such host as %s\n", conf->acceptor_addr);
         return EXIT_FAILURE;
     }
 
     /* build the server's Internet address */
-    bzero((char *) ctx->learner_addr, sizeof(struct sockaddr_in));
-    ctx->learner_addr->sin_family = AF_INET;
+    bzero((char *) ctx->acceptor_addr, sizeof(struct sockaddr_in));
+    ctx->acceptor_addr->sin_family = AF_INET;
     bcopy((char *)server->h_addr,
-      (char *)&(ctx->learner_addr->sin_addr.s_addr), server->h_length);
-    ctx->learner_addr->sin_port = htons(conf->learner_port);
+      (char *)&(ctx->acceptor_addr->sin_addr.s_addr), server->h_length);
+    ctx->acceptor_addr->sin_port = htons(conf->acceptor_port);
 
     struct event *ev_recv;
     int listen_socket = create_server_socket(port);

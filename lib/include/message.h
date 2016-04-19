@@ -5,6 +5,14 @@
 
 #define PAXOS_VALUE_SIZE 32
 
+enum paxos_type {
+    phase0,
+    phase1a,
+    phase1b,
+    phase2a,
+    phase2b
+};
+
 typedef struct Message {
     uint32_t inst;
     uint16_t rnd;

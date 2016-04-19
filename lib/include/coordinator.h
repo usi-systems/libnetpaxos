@@ -7,7 +7,7 @@
 
 typedef struct CoordinatorCtx {
     struct event_base *base;
-    struct sockaddr_in *learner_addr;
+    struct sockaddr_in *acceptor_addr;
     Config conf;
     int cur_inst;
     int listen_port;

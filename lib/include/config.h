@@ -8,6 +8,7 @@ typedef struct Config {
     int verbose;
     int learner_port;
     int proposer_port;
+    int acceptor_port;
     int maxinst;
     int enable_paxos;
     int outstanding;
@@ -16,6 +17,7 @@ typedef struct Config {
     int node_id;
     char learner_addr[64];
     char proposer_addr[64];
+    char acceptor_addr[64];
     int num_acceptors;
 } Config;
 

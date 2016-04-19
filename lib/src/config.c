@@ -43,11 +43,17 @@ Config *parse_conf(char *config_file) {
         else if (strcmp(key, "PROPOSER_ADDR") == 0) {
             strcpy(conf->proposer_addr, value);
         }
+        else if (strcmp(key, "ACCEPTOR_ADDR") == 0) {
+            strcpy(conf->acceptor_addr, value);
+        }
         else if (strcmp(key, "LEARNER_PORT") == 0) {
             conf->learner_port = atoi(value);
         }
         else if (strcmp(key, "PROPOSER_PORT") == 0) {
             conf->proposer_port = atoi(value);
+        }
+        else if (strcmp(key, "ACCEPTOR_PORT") == 0) {
+            conf->acceptor_port = atoi(value);
         }
         else if (strcmp(key, "MAXINST") == 0) {
             conf->maxinst = atoi(value);
