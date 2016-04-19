@@ -103,7 +103,7 @@ void handle_accepted(LearnerCtx *ctx, Message *msg, evutil_socket_t fd) {
             if (state->count == ctx->maj) { // Chosen value
                 state->finished = 1;        // Marked values has been chosen
                 // printf("deliver %d\n", msg->inst);
-                ctx->deliver(state->paxosval); 
+                ctx->deliver(state->paxosval, ctx->app);
 
                 char res[] = "ACKED";
                 int n = sendto(fd, res, strlen(res), 0, (struct sockaddr*) &msg->client, sizeof(msg->client));
@@ -155,9 +155,10 @@ void cb_func(evutil_socket_t fd, short what, void *arg)
 }
 
 
-int start_learner(Config *conf, void *(*deliver_cb)(void* arg)) {
+int start_learner(Config *conf, void *(*deliver_cb)(char* value, void* arg), void* arg) {
     LearnerCtx *ctx = learner_ctx_new(*conf);
     ctx->base = event_base_new();
+    ctx->app = arg;
     ctx->deliver = deliver_cb;
     int server_socket = create_server_socket(conf->learner_port);
     addMembership(conf->learner_addr, server_socket);

@@ -20,8 +20,7 @@
 #include "netpaxos_utils.h"
 
 #define BUF_SIZE 1500
-void send_message(evutil_socket_t fd, struct sockaddr_in *addr);
-
+void send_message(evutil_socket_t fd, struct sockaddr_in *addr, int idx);
 
 struct client_state {
     int mps;
@@ -72,21 +71,22 @@ void on_response(evutil_socket_t fd, short what, void *arg) {
             fprintf(state->fp, "%.9f\n", latency);
         }
         // printf("on value: %s: %d length, addr_length: %d\n", recvbuf, n, remote_len);
-        send_message(fd, state->proposer);
+        send_message(fd, state->proposer, state->mps);
         gettime(&state->send_time);
         state->mps++;
     } else if (what&EV_TIMEOUT) {
         // printf("on timeout, send.\n");
-        send_message(fd, state->proposer);
+        send_message(fd, state->proposer, state->mps);
         gettime(&state->send_time);
     }
 }
 
-void send_message(evutil_socket_t fd, struct sockaddr_in *addr) {
+void send_message(evutil_socket_t fd, struct sockaddr_in *addr, int count) {
     socklen_t len = sizeof(struct sockaddr_in);
     // Warning: Fit message in 16 Bytes
-    char msg[] = "Put (key, val)";
-    int n = sendto(fd, msg, sizeof(msg), 0, (struct sockaddr*) addr, len);
+    char *msg[] = { "PUT key val", "GET key", "DEL key" };
+    int idx = count % 3;
+    int n = sendto(fd, msg[idx], strlen(msg[idx]), 0, (struct sockaddr*) addr, len);
     if (n < 0) {
         perror("ERROR in sendto");
         return;
