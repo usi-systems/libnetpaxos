@@ -51,6 +51,7 @@ void *deliver(char* value, void *arg) {
             return;
         }
         leveldb_free(err); err = NULL;
+        return strdup("PUT OK");
     }
     else if (strcmp(token, "GET") == 0) {
         char *key = strtok(NULL, " ");
@@ -61,7 +62,11 @@ void *deliver(char* value, void *arg) {
             return;
         }
         leveldb_free(err); err = NULL;
-         printf("%s: %s\n", key, val);
+        // printf("%s: %s\n", key, val);
+        if (val) {
+            return val;
+        } else
+            return strdup("NOT FOUND");
     }
     else if (strcmp(token, "DEL") == 0) {
         char *key = strtok(NULL, " ");
@@ -72,7 +77,9 @@ void *deliver(char* value, void *arg) {
             return;
         }
         leveldb_free(err); err = NULL;
-         printf("DELETED %s\n", key);
+         // printf("DELETED %s\n", key);
+        char *res = strdup("DELETE OK");
+        return res;
     }
 }
 

@@ -71,6 +71,9 @@ void on_response(evutil_socket_t fd, short what, void *arg) {
             fprintf(state->fp, "%.9f\n", latency);
         }
         // printf("on value: %s: %d length, addr_length: %d\n", recvbuf, n, remote_len);
+        // clean receiving buffer
+        memset(recvbuf, 0, BUF_SIZE);
+
         send_message(fd, state->proposer, state->mps);
         gettime(&state->send_time);
         state->mps++;
@@ -84,8 +87,8 @@ void on_response(evutil_socket_t fd, short what, void *arg) {
 void send_message(evutil_socket_t fd, struct sockaddr_in *addr, int count) {
     socklen_t len = sizeof(struct sockaddr_in);
     // Warning: Fit message in 16 Bytes
-    char *msg[] = { "PUT key val", "GET key", "DEL key" };
-    int idx = count % 3;
+    char *msg[] = { "PUT key val", "GET key", "DEL key", "GET not"};
+    int idx = count % 4;
     int n = sendto(fd, msg[idx], strlen(msg[idx]), 0, (struct sockaddr*) addr, len);
     if (n < 0) {
         perror("ERROR in sendto");

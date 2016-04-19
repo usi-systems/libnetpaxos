@@ -103,12 +103,13 @@ void handle_accepted(LearnerCtx *ctx, Message *msg, evutil_socket_t fd) {
             if (state->count == ctx->maj) { // Chosen value
                 state->finished = 1;        // Marked values has been chosen
                 // printf("deliver %d\n", msg->inst);
-                ctx->deliver(state->paxosval, ctx->app);
-
-                char res[] = "ACKED";
+                char *res = ctx->deliver(state->paxosval, ctx->app);
+                if (!res) {
+                    res = strdup("SERVER ERROR");
+                }
                 int n = sendto(fd, res, strlen(res), 0, (struct sockaddr*) &msg->client, sizeof(msg->client));
                 if (n < 0) {perror("ERROR in sendto"); return; }
-
+                free(res);
             }
         }
     } else if (msg->rnd > state->rnd) {
