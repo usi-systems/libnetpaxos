@@ -47,9 +47,10 @@ void application_destroy(struct application *state) {
 
 }
 
-void *deliver(char* value, void *arg) {
+void *deliver(char* chosen, void *arg) {
     struct application *state = (struct application *)arg;
     // printf("delivered %s\n", value);
+    char *value = strdup(chosen);
     char* token = strtok(value, " ");
     char *err = NULL;
     size_t read_len;
@@ -65,11 +66,13 @@ void *deliver(char* value, void *arg) {
             return;
         }
         leveldb_free(err); err = NULL;
+        free(value);
         return strdup("PUT OK");
     }
     else if (strcmp(token, "GET") == 0) {
         char *key = strtok(NULL, " ");
         int keylen = strlen(key) + 1;
+        free(value);
         char *val = leveldb_get(state->db, state->roptions, key, keylen, &read_len, &err);
         if (err != NULL) {
             fprintf(stderr, "Read fail.\n");
@@ -85,6 +88,7 @@ void *deliver(char* value, void *arg) {
     else if (strcmp(token, "DEL") == 0) {
         char *key = strtok(NULL, " ");
         int keylen = strlen(key) + 1;
+        free(value);
         leveldb_delete(state->db, state->woptions, key, keylen, &err);
         if (err != NULL) {
             fprintf(stderr, "DELETE fail.\n");
