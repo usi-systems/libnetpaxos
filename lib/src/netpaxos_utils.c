@@ -71,6 +71,7 @@ int create_server_socket(int port) {
     }
     setReuseAddr(sockfd);
     setRcvBuf(sockfd);
+    setReusePort(sockfd);
     printf("Listening on port %d.\n", port);
     return sockfd;
 }
@@ -80,7 +81,7 @@ void addMembership(char *group, int sockfd) {
     mreq.imr_multiaddr.s_addr = inet_addr(group);
     mreq.imr_interface.s_addr = htonl(INADDR_ANY);
     if (setsockopt(sockfd,IPPROTO_IP,IP_ADD_MEMBERSHIP,&mreq,sizeof(mreq))<0) {
-        perror("setsockopt mreq");
+        perror("IP_ADD_MEMBERSHIP");
         exit(EXIT_FAILURE);
     }
 }
@@ -90,7 +91,16 @@ void setReuseAddr(int sockfd) {
     int yes = 1;
     if ( setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1 )
     {
-        perror("set reuseport");
+        perror("set SO_REUSEADDR");
+        exit(EXIT_FAILURE);
+    }
+}
+
+void setReusePort(int sockfd) {
+    int yes = 1;
+    if ( setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT, &yes, sizeof(int)) == -1 )
+    {
+        perror("set SO_REUSEPORT");
         exit(EXIT_FAILURE);
     }
 }
@@ -100,7 +110,7 @@ void setRcvBuf(int sockfd) {
     socklen_t size = sizeof(sockfd);
     if ( setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, (void *)&rcvbuf, size) == -1 )
     {
-        perror("get RcvBuf");
+        perror("set SO_RCVBUF");
         exit(EXIT_FAILURE);
     }
 }

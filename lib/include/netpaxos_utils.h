@@ -12,4 +12,5 @@ int create_server_socket(int port);
 void addMembership(char *group, int sockfd);
 void setReuseAddr(int sockfd);
 void setRcvBuf(int sockfd);
+void setReusePort(int sockfd);
 #endif
