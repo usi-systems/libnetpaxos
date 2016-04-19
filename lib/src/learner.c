@@ -104,6 +104,8 @@ void handle_accepted(LearnerCtx *ctx, Message *msg, evutil_socket_t fd) {
                 state->finished = 1;        // Marked values has been chosen
                 // printf("deliver %d\n", msg->inst);
                 char *res = ctx->deliver(state->paxosval, ctx->app);
+                ctx->mps++;
+                ctx->num_packets++;
                 if (!res) {
                     res = strdup("SERVER ERROR");
                 }
@@ -150,8 +152,6 @@ void cb_func(evutil_socket_t fd, short what, void *arg)
     // ctx->deliver(ctx->msg->paxosval);
     n = sendto(fd, &msg, sizeof(Message), 0, (struct sockaddr*) &remote, remote_len);
     if (n < 0) {perror("ERROR in sendto"); return; }
-    ctx->mps++;
-    ctx->num_packets++;
     // if (ctx->num_packets == ctx->conf.maxinst) { raise(SIGTERM); }
 }
 
