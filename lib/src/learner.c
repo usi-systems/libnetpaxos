@@ -148,11 +148,6 @@ void cb_func(evutil_socket_t fd, short what, void *arg)
     }
 
     handle_accepted(ctx, ctx->msg, fd);
-
-    // ctx->deliver(ctx->msg->paxosval);
-    n = sendto(fd, &msg, sizeof(Message), 0, (struct sockaddr*) &remote, remote_len);
-    if (n < 0) {perror("ERROR in sendto"); return; }
-    // if (ctx->num_packets == ctx->conf.maxinst) { raise(SIGTERM); }
 }
 
 
