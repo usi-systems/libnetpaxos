@@ -17,8 +17,8 @@ add_library (Libperf ${SOURCE_FILES})
 target_link_libraries (Libperf ${EXTRA_LIBS})
 
 # leveldb
-include_directories(leveldb/include)
-link_directories(leveldb/out-shared)
+include_directories(/usr/local/include/leveldb/include)
+link_directories(/usr/local/lib)
 
 file( GLOB APP_SOURCES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} app/*.c )
 
