@@ -89,7 +89,7 @@ void *deliver(const char* chosen, void *arg) {
         }
         size_t keylen = strlen(key) + 1;
         size_t vallen = strlen(val) + 1;
-        printf("PUT (%s:%zu, %s:%zu)\n", key, keylen, val, vallen);
+        // printf("PUT (%s:%zu, %s:%zu)\n", key, keylen, val, vallen);
         leveldb_put(state->db, state->woptions, key, keylen, val, vallen, &err);
         if (err != NULL) {
             free(chosen_duplicate);
@@ -105,13 +105,14 @@ void *deliver(const char* chosen, void *arg) {
             return strdup("Key is NULL");
         }
         int keylen = strlen(key) + 1;
+        // printf("PUT (%s:%zu)\n", key, keylen);
         char *val = leveldb_get(state->db, state->roptions, key, keylen, &read_len, &err);
         if (err != NULL) {
             free(chosen_duplicate);
             return err;
         }
         leveldb_free(err); err = NULL;
-        printf("%s: %s\n", key, val);
+        // printf("%s: %s\n", key, val);
         if (!val) {
             free(chosen_duplicate);
             return strdup("NOT FOUND");
@@ -142,25 +143,24 @@ void
 readcb(struct bufferevent *bev, void *arg)
 {
     struct application *ctx = arg;
-    char *request;
+    char request[32];
+    memset(request, 0, 32);
     struct evbuffer *input, *output;
     input = bufferevent_get_input(bev);
     output = bufferevent_get_output(bev);
-    size_t len;
 
-    request = evbuffer_readln(input, &len, EVBUFFER_EOL_CRLF);
-    printf("received: %s, size: %zu\n", request, len);
+    int n = evbuffer_remove(input, request, sizeof(request));
+    // printf("received: %s, size: %d\n", request, n);
     char *res = deliver(request, ctx);
     if (res) {
-        printf("sent: %s, size: %zu\n", res, strlen(res) + 1);
+        // printf("sent: %s, size: %zu\n", res, strlen(res) + 1);
         evbuffer_add(output, res, strlen(res) + 1);
         free(res);
         ctx->mps++;
     }
-    else {
-        evbuffer_add(output, "NULL", 5);
-    }
-    free(request);
+    // else {
+    //     evbuffer_add(output, "NULL", 5);
+    // }
 }
 
 void
