@@ -64,61 +64,75 @@ void application_free(struct application *state) {
 
 }
 
-void *deliver(char* chosen, void *arg) {
+
+
+void *deliver(const char* chosen, void *arg) {
     struct application *state = (struct application *)arg;
-    printf("delivered %s\n", chosen);
-    char *value = strdup(chosen);
-    char* token = strtok(value, " ");
-    char *res = NULL;
+    // printf("delivered %s\n", chosen);
+    if (!chosen || chosen[0] == '\0') {
+        return NULL;
+    }
     char *err = NULL;
+    char *chosen_duplicate = strdup(chosen);
+    char* token = strtok(chosen_duplicate, " ");
     size_t read_len;
     if (strcmp(token, "PUT") == 0) {
         char *key = strtok(NULL, " ");
+        if (!key) {
+            free(chosen_duplicate);
+            return strdup("Key is NULL");
+        }
         char *val = strtok(NULL, " ");
+        if (!val) {
+            free(chosen_duplicate);
+            return strdup("Value is NULL");
+        }
         size_t keylen = strlen(key) + 1;
         size_t vallen = strlen(val) + 1;
         printf("PUT (%s:%zu, %s:%zu)\n", key, keylen, val, vallen);
         leveldb_put(state->db, state->woptions, key, keylen, val, vallen, &err);
         if (err != NULL) {
-            fprintf(stderr, "Write fail.\n");
-            free(value);
-            return;
+            free(chosen_duplicate);
+            return err;
         }
         leveldb_free(err); err = NULL;
-        free(value);
         return strdup("PUT OK");
     }
     else if (strcmp(token, "GET") == 0) {
         char *key = strtok(NULL, " ");
+        if (!key) {
+            free(chosen_duplicate);
+            return strdup("Key is NULL");
+        }
         int keylen = strlen(key) + 1;
         char *val = leveldb_get(state->db, state->roptions, key, keylen, &read_len, &err);
         if (err != NULL) {
-            fprintf(stderr, "Read fail.\n");
-            free(value);
-            return;
+            free(chosen_duplicate);
+            return err;
         }
         leveldb_free(err); err = NULL;
         printf("%s: %s\n", key, val);
-        if (val) {
-            free(value);
-            return val;
-        } else {
-            free(value);
+        if (!val) {
+            free(chosen_duplicate);
             return strdup("NOT FOUND");
         }
-
+        return val;
     }
     else if (strcmp(token, "DEL") == 0) {
         char *key = strtok(NULL, " ");
+        if (!key) {
+            free(chosen_duplicate);
+            return strdup("Key is NULL");
+        }
         int keylen = strlen(key) + 1;
         leveldb_delete(state->db, state->woptions, key, keylen, &err);
         if (err != NULL) {
-            fprintf(stderr, "DELETE fail.\n");
-            return;
+            free(chosen_duplicate);
+            return err;
         }
         leveldb_free(err); err = NULL;
-        char *res = strdup("DELETE OK");
-        return res;
+        free(chosen_duplicate);
+        return strdup("DELETE OK");
     }
     return NULL;
 }
@@ -135,22 +149,18 @@ readcb(struct bufferevent *bev, void *arg)
     size_t len;
 
     request = evbuffer_readln(input, &len, EVBUFFER_EOL_CRLF);
-    if (!request || request[0] == '\0') {
-        evbuffer_add(output, "Empty", 6);
-        printf("received: %s, size: %zu\n", request, len);
-    } else {
-        char *res = deliver(request, ctx);
-        if (res) {
-            printf("sent: %s, size: %zu\n", res, strlen(res) + 1);
-            evbuffer_add(output, res, strlen(res) + 1);
-            free(res);
-            free(request);
-        }
-        else {
-            evbuffer_add(output, "NULL", 5);
-        }
+    printf("received: %s, size: %zu\n", request, len);
+    char *res = deliver(request, ctx);
+    if (res) {
+        printf("sent: %s, size: %zu\n", res, strlen(res) + 1);
+        evbuffer_add(output, res, strlen(res) + 1);
+        free(res);
         ctx->mps++;
     }
+    else {
+        evbuffer_add(output, "NULL", 5);
+    }
+    free(request);
 }
 
 void
