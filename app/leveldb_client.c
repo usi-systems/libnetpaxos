@@ -5,12 +5,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-char *msg[] = { "PUT key val", "GET key", "DEL key", "GET not"};
-
 struct info {
     struct event_base *base;
     int mps;
-    int total_commands;
+    int count;
+    int num_elements;
     char **msg;
 };
 
@@ -37,17 +36,27 @@ void readcb(struct bufferevent *bev, void *ptr)
         // fwrite(buf, 1, n, stdout);
     }
     inf->mps++;
-    submit(bev, msg[0], 12);
+    int idx = inf->mps % inf->count;
+    char *msg = inf->msg[idx];
+    int size = strlen(inf->msg[idx] + 1);
+    printf("msg[%d]: %s, size:%d\n", idx, msg, size);
+    submit(bev, msg, size);
 }
 
 void eventcb(struct bufferevent *bev, short events, void *ptr)
 {
+    struct info *inf = ptr;
     if (events & BEV_EVENT_CONNECTED) {
         printf("Connect okay.\n");
         bufferevent_enable(bev, EV_READ|EV_WRITE);
-        submit(bev, msg[0], 12);
+
+        int idx = inf->mps % inf->count;
+        char *msg = inf->msg[idx];
+        int size = strlen(inf->msg[idx] + 1);
+        printf("sizeof msg: %d\n", size);
+        submit(bev, msg, size);
+
     } else if (events & (BEV_EVENT_ERROR|BEV_EVENT_EOF)) {
-         struct info *inf = ptr;
          if (events & BEV_EVENT_ERROR) {
                  int err = bufferevent_socket_get_dns_error(bev);
                  if (err)
@@ -67,8 +76,14 @@ void read_input(struct info *inf, char* workload) {
         exit(EXIT_FAILURE);
 
     while ((read = getline(&line, &len, fp)) != -1) {
-        printf("Retrieved line of length %zu :\n", read);
-        printf("%s", line);
+        if (inf->count >= inf->num_elements) {
+            inf->num_elements += 10;
+            inf->msg = realloc(inf->msg, inf->num_elements);
+        }
+        inf->msg[inf->count] = malloc(read + 1);
+        strcpy(inf->msg[inf->count], line);
+        free(line);
+        inf->count++;
     }
     fclose(fp);
 }
@@ -76,11 +91,19 @@ void read_input(struct info *inf, char* workload) {
 struct info *info_new() {
     struct info *inf = malloc(sizeof(struct info));
     inf->mps = 0;
-    inf->total_commands = 0;
+    inf->num_elements = 10;
+    // Initialize to 10 elements
+    inf->msg = calloc(inf->num_elements, sizeof(char));
 }
 
 void info_free(struct info *inf) {
     event_base_free(inf->base);
+    int i;
+    for (i = 0; i < inf->count; i++) {
+        if(inf->msg[i])
+            free(inf->msg[i]);
+    }
+    free(inf->msg);
     free(inf);
 }
 
