@@ -39,7 +39,7 @@ struct application* application_new() {
     /* OPEN DB */
     ctx->options = leveldb_options_create();
     leveldb_options_set_create_if_missing(ctx->options, 1);
-    ctx->db = leveldb_open(ctx->options, "/tmp/testdb", &err);
+    ctx->db = leveldb_open(ctx->options, "/tmp/ycsb", &err);
     if (err != NULL) {
       fprintf(stderr, "Open fail.\n");
       exit(EXIT_FAILURE);
@@ -55,7 +55,7 @@ struct application* application_new() {
 void application_free(struct application *state) {
     char *err = NULL;
     leveldb_close(state->db);
-    leveldb_destroy_db(state->options, "/tmp/testdb", &err);
+    leveldb_destroy_db(state->options, "/tmp/ycsb", &err);
     if (err != NULL) {
       fprintf(stderr, "Destroy fail.\n");
       return;
@@ -66,20 +66,22 @@ void application_free(struct application *state) {
 
 void *deliver(char* chosen, void *arg) {
     struct application *state = (struct application *)arg;
-    // printf("delivered %s\n", value);
+    printf("delivered %s\n", chosen);
     char *value = strdup(chosen);
     char* token = strtok(value, " ");
+    char *res = NULL;
     char *err = NULL;
     size_t read_len;
-
     if (strcmp(token, "PUT") == 0) {
         char *key = strtok(NULL, " ");
         char *val = strtok(NULL, " ");
-        int keylen = strlen(key) + 1;
-        int vallen = strlen(val) + 1;
+        size_t keylen = strlen(key) + 1;
+        size_t vallen = strlen(val) + 1;
+        printf("PUT (%s:%zu, %s:%zu)\n", key, keylen, val, vallen);
         leveldb_put(state->db, state->woptions, key, keylen, val, vallen, &err);
         if (err != NULL) {
             fprintf(stderr, "Write fail.\n");
+            free(value);
             return;
         }
         leveldb_free(err); err = NULL;
@@ -89,33 +91,36 @@ void *deliver(char* chosen, void *arg) {
     else if (strcmp(token, "GET") == 0) {
         char *key = strtok(NULL, " ");
         int keylen = strlen(key) + 1;
-        free(value);
         char *val = leveldb_get(state->db, state->roptions, key, keylen, &read_len, &err);
         if (err != NULL) {
             fprintf(stderr, "Read fail.\n");
+            free(value);
             return;
         }
         leveldb_free(err); err = NULL;
-        // printf("%s: %s\n", key, val);
+        printf("%s: %s\n", key, val);
         if (val) {
+            free(value);
             return val;
-        } else
+        } else {
+            free(value);
             return strdup("NOT FOUND");
+        }
+
     }
     else if (strcmp(token, "DEL") == 0) {
         char *key = strtok(NULL, " ");
         int keylen = strlen(key) + 1;
-        free(value);
         leveldb_delete(state->db, state->woptions, key, keylen, &err);
         if (err != NULL) {
             fprintf(stderr, "DELETE fail.\n");
             return;
         }
         leveldb_free(err); err = NULL;
-         // printf("DELETED %s\n", key);
         char *res = strdup("DELETE OK");
         return res;
     }
+    return NULL;
 }
 
 
@@ -123,16 +128,29 @@ void
 readcb(struct bufferevent *bev, void *arg)
 {
     struct application *ctx = arg;
-    char buf[1024];
+    char *request;
     struct evbuffer *input, *output;
     input = bufferevent_get_input(bev);
     output = bufferevent_get_output(bev);
+    size_t len;
 
-    int n = evbuffer_remove(input, buf, sizeof(buf));
-    char *res = deliver(buf, ctx);
-    evbuffer_add(output, res, strlen(res) + 1);
-    free(res);
-    ctx->mps++;
+    request = evbuffer_readln(input, &len, EVBUFFER_EOL_CRLF);
+    if (!request || request[0] == '\0') {
+        evbuffer_add(output, "Empty", 6);
+        printf("received: %s, size: %zu\n", request, len);
+    } else {
+        char *res = deliver(request, ctx);
+        if (res) {
+            printf("sent: %s, size: %zu\n", res, strlen(res) + 1);
+            evbuffer_add(output, res, strlen(res) + 1);
+            free(res);
+            free(request);
+        }
+        else {
+            evbuffer_add(output, "NULL", 5);
+        }
+        ctx->mps++;
+    }
 }
 
 void
