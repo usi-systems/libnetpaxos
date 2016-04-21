@@ -18,6 +18,7 @@
 #include <signal.h>
 #include <errno.h>
 #include "netpaxos_utils.h"
+#include "config.h"
 
 #define BUF_SIZE 1500
 void send_message(evutil_socket_t fd, struct sockaddr_in *addr, int idx);
@@ -103,10 +104,11 @@ struct client_state* client_state_new() {
 }
 
 int main(int argc, char* argv[]) {
-    if (argc < 4) {
-        printf("Usage: %s address port output\n", argv[0]);
+    if (argc < 3) {
+        printf("Usage: %s config output\n", argv[0]);
         exit(EXIT_FAILURE);
     }
+    Config *conf = parse_conf(argv[1]);
     struct client_state *state = client_state_new();
     state->base = event_base_new();
     struct sockaddr_in *proposer = malloc(sizeof (struct sockaddr_in));
@@ -117,22 +119,21 @@ int main(int argc, char* argv[]) {
         return EXIT_FAILURE;
     }
 
-    struct hostent *server = gethostbyname(argv[1]);
+    struct hostent *server = gethostbyname(conf->proposer_addr);
 
     if (server == NULL) {
-        fprintf(stderr, "ERROR, no such host as %s\n", argv[1]);
+        fprintf(stderr, "ERROR, no such host as %s\n", conf->proposer_addr);
         return EXIT_FAILURE;
     }
-    int port = atoi(argv[2]);
     /* build the server's Internet address */
     bzero((char *) proposer, sizeof(struct sockaddr_in));
     proposer->sin_family = AF_INET;
     bcopy((char *)server->h_addr,
       (char *)&(proposer->sin_addr.s_addr), server->h_length);
-    proposer->sin_port = htons(port);
+    proposer->sin_port = htons(conf->proposer_port);
 
     state->proposer = proposer;
-    state->fp = fopen(argv[3], "w+");
+    state->fp = fopen(argv[2], "w+");
 
     struct event *ev_recv;
     struct timeval period = {1, 0};

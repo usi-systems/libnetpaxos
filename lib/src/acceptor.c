@@ -43,14 +43,14 @@ AcceptorCtx *acceptor_ctx_new(Config conf, int acceptor_id) {
     int n = snprintf(fname, sizeof fname, "acceptor-%d.txt", acceptor_id);
     if ( n < 0 || n >= sizeof fname )
         exit(EXIT_FAILURE);
-    ctx->fp = fopen(fname, "w+");
+    // ctx->fp = fopen(fname, "w+");
 
     return ctx;
 }
 
 void acceptor_ctx_destroy(AcceptorCtx *ctx) {
     int i;
-    fclose(ctx->fp);
+    // fclose(ctx->fp);
     free(ctx->msg);
     for (i = 0; i < ctx->conf.maxinst; i++) {
         free(ctx->states[i]->paxosval);

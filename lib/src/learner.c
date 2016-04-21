@@ -49,14 +49,14 @@ LearnerCtx *learner_ctx_new(Config conf) {
     int n = snprintf(fname, sizeof fname, "learner-%d.txt", conf.node_id);
     if ( n < 0 || n >= sizeof fname )
         exit(EXIT_FAILURE);
-    ctx->fp = fopen(fname, "w+");
+    // ctx->fp = fopen(fname, "w+");
 
     return ctx;
 }
 
 void learner_ctx_destroy(LearnerCtx *ctx) {
     int i;
-    fclose(ctx->fp);
+    // fclose(ctx->fp);
     free(ctx->msg);
     for (i = 0; i < ctx->conf.maxinst; i++) {
         free(ctx->states[i]->paxosval);
@@ -70,11 +70,12 @@ void signal_handler(evutil_socket_t fd, short what, void *arg) {
     LearnerCtx *ctx = (LearnerCtx *) arg;
     if (what&EV_SIGNAL) {
         event_base_loopbreak(ctx->base);
-        int i;
-        for (i = 0; i < ctx->conf.maxinst; i++) {
-            fprintf(ctx->fp, "%s\n", ctx->states[i]->paxosval);
-        }
-        fprintf(stdout, "num_packets: %d\n", ctx->num_packets);
+        // disable for now
+        // int i;
+        // for (i = 0; i < ctx->conf.maxinst; i++) {
+        //     fprintf(ctx->fp, "%s\n", ctx->states[i]->paxosval);
+        // }
+        // fprintf(stdout, "num_packets: %d\n", ctx->num_packets);
         learner_ctx_destroy(ctx);
     }
 }
