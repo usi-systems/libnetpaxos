@@ -24,6 +24,7 @@ void learner_ctx_destroy(LearnerCtx *st);
 /* Here's a callback function that calls loop break */
 LearnerCtx *learner_ctx_new(Config conf) {
     LearnerCtx *ctx = malloc(sizeof(LearnerCtx));
+    ctx->base = event_base_new();
     ctx->conf = conf;
     ctx->mps = 0;
     ctx->num_packets = 0;
@@ -37,7 +38,7 @@ LearnerCtx *learner_ctx_new(Config conf) {
     ctx->states = calloc(ctx->conf.maxinst, sizeof(paxos_state*));
     int i;
     for (i = 0; i < ctx->conf.maxinst; i++) {
-        ctx->states[i] = malloc(sizeof(paxos_state*));
+        ctx->states[i] = malloc(sizeof(paxos_state));
         ctx->states[i]->rnd = 0;
         ctx->states[i]->from = 0;
         ctx->states[i]->count = 0;
@@ -57,6 +58,7 @@ LearnerCtx *learner_ctx_new(Config conf) {
 void learner_ctx_destroy(LearnerCtx *ctx) {
     int i;
     // fclose(ctx->fp);
+    event_base_free(ctx->base);
     free(ctx->msg);
     for (i = 0; i < ctx->conf.maxinst; i++) {
         free(ctx->states[i]->paxosval);
@@ -76,7 +78,6 @@ void signal_handler(evutil_socket_t fd, short what, void *arg) {
         //     fprintf(ctx->fp, "%s\n", ctx->states[i]->paxosval);
         // }
         // fprintf(stdout, "num_packets: %d\n", ctx->num_packets);
-        learner_ctx_destroy(ctx);
     }
 }
 
@@ -154,7 +155,6 @@ void cb_func(evutil_socket_t fd, short what, void *arg)
 
 int start_learner(Config *conf, void *(*deliver_cb)(const char* value, void* arg), void* arg) {
     LearnerCtx *ctx = learner_ctx_new(*conf);
-    ctx->base = event_base_new();
     ctx->app = arg;
     ctx->deliver = deliver_cb;
     int server_socket = create_server_socket(conf->learner_port);
@@ -176,6 +176,14 @@ int start_learner(Config *conf, void *(*deliver_cb)(const char* value, void* arg
     event_add(monitor_ev, &timeout);
     event_add(evsig, NULL);
 
+    // Comment the line below for valgrind check
     event_base_dispatch(ctx->base);
+
+    event_free(recv_ev);
+    event_free(monitor_ev);
+    event_free(evsig);
+
+    learner_ctx_destroy(ctx);
+   
     return EXIT_SUCCESS;
 }

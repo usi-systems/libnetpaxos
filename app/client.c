@@ -35,9 +35,7 @@ void signal_handler(evutil_socket_t fd, short what, void *arg) {
     struct client_state *state = (struct client_state*) arg;
     if (what&EV_SIGNAL) {
         event_base_loopbreak(state->base);
-        fclose(state->fp);
-        free(state->proposer);
-        free(state);
+        printf("Stop client\n");
     }
 }
 
@@ -99,8 +97,16 @@ void send_message(evutil_socket_t fd, struct sockaddr_in *addr, int count) {
 
 struct client_state* client_state_new() {
     struct client_state *state = malloc(sizeof(struct client_state));
+    state->base = event_base_new();
     state->mps = 0;
     return state;
+}
+
+void client_state_free(struct client_state *state) {
+    fclose(state->fp);
+    event_base_free(state->base);
+    free(state->proposer);
+    free(state);
 }
 
 int main(int argc, char* argv[]) {
@@ -110,7 +116,6 @@ int main(int argc, char* argv[]) {
     }
     Config *conf = parse_conf(argv[1]);
     struct client_state *state = client_state_new();
-    state->base = event_base_new();
     struct sockaddr_in *proposer = malloc(sizeof (struct sockaddr_in));
     // socket to send Paxos messages to learners
     int sock = socket(AF_INET, SOCK_DGRAM, 0);
@@ -140,11 +145,19 @@ int main(int argc, char* argv[]) {
     ev_recv = event_new(state->base, sock, EV_READ|EV_TIMEOUT|EV_PERSIST, on_response, state);
     struct event *ev_monitor;
     ev_monitor = event_new(state->base, -1, EV_TIMEOUT|EV_PERSIST, monitor, state);
+    struct event *ev_sigint;
+    ev_sigint = evsignal_new(state->base, SIGTERM, signal_handler, state);
 
     event_add(ev_recv, &period);
     event_add(ev_monitor, &period);
+    event_add(ev_sigint, NULL);
 
     event_base_dispatch(state->base);
+    free(conf);
+    event_free(ev_recv);
+    event_free(ev_monitor);
+    event_free(ev_sigint);
+    client_state_free(state);
     close(sock);
     return EXIT_SUCCESS;
 }

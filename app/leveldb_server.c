@@ -52,16 +52,20 @@ struct application* application_new() {
     return ctx;
 }
 
-void application_free(struct application *state) {
+void application_free(struct application *ctx) {
     char *err = NULL;
-    leveldb_close(state->db);
-    leveldb_destroy_db(state->options, "/tmp/ycsb", &err);
+    event_base_free(ctx->base);
+    leveldb_close(ctx->db);
+    leveldb_destroy_db(ctx->options, "/tmp/ycsb", &err);
     if (err != NULL) {
       fprintf(stderr, "Destroy fail.\n");
       return;
     }
     leveldb_free(err); err = NULL;
-
+    leveldb_options_destroy(ctx->options);
+    leveldb_writeoptions_destroy(ctx->woptions);
+    leveldb_readoptions_destroy(ctx->roptions);
+    free(ctx);
 }
 
 
@@ -257,7 +261,11 @@ run(int port)
     event_base_priority_init(ctx->base, 2);
     event_priority_set(monitor_event, 0);
     event_priority_set(listener_event, 1);
+
+    // Comment the line below for valgrind check
     event_base_dispatch(ctx->base);
+    event_free(listener_event);
+    event_free(monitor_event);
     application_free(ctx);
 }
 

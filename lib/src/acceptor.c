@@ -30,14 +30,14 @@ AcceptorCtx *acceptor_ctx_new(Config conf, int acceptor_id) {
     if (ctx->msg == NULL) {
         perror("Unable to allocate memory for msg\n");
     }
-    ctx->states = calloc(ctx->conf.maxinst, sizeof(a_state*));
+    ctx->states = calloc(ctx->conf.maxinst, sizeof(a_state));
     int i;
     for (i = 0; i < ctx->conf.maxinst; i++) {
-        ctx->states[i] = malloc(sizeof(a_state*));
+        ctx->states[i] = malloc(sizeof(a_state));
         ctx->states[i]->rnd = 0;
         ctx->states[i]->vrnd = 0;
-        ctx->states[i]->paxosval = malloc(PAXOS_VALUE_SIZE);
-        bzero(ctx->states[i]->paxosval, PAXOS_VALUE_SIZE);
+        ctx->states[i]->paxosval = malloc(PAXOS_VALUE_SIZE + 1);
+        bzero(ctx->states[i]->paxosval, PAXOS_VALUE_SIZE + 1);
     }
     char fname[32];
     int n = snprintf(fname, sizeof fname, "acceptor-%d.txt", acceptor_id);
@@ -50,6 +50,8 @@ AcceptorCtx *acceptor_ctx_new(Config conf, int acceptor_id) {
 
 void acceptor_ctx_destroy(AcceptorCtx *ctx) {
     int i;
+    event_base_free(ctx->base);
+    free(ctx->learner_addr);
     // fclose(ctx->fp);
     free(ctx->msg);
     for (i = 0; i < ctx->conf.maxinst; i++) {
@@ -57,6 +59,7 @@ void acceptor_ctx_destroy(AcceptorCtx *ctx) {
         free(ctx->states[i]);
     }
     free(ctx->states);
+
     free(ctx);
 }
 
@@ -69,7 +72,6 @@ void signal_handler(evutil_socket_t fd, short what, void *arg) {
         //     fprintf(ctx->fp, "%s\n", ctx->states[i]->paxosval);
         // }
         // fprintf(stdout, "num_packets: %d\n", ctx->num_packets);
-        acceptor_ctx_destroy(ctx);
     }
 }
 
@@ -174,6 +176,11 @@ int start_acceptor(Config *conf, int acceptor_id) {
     evsig = evsignal_new(ctx->base, SIGTERM, signal_handler, ctx);
     event_add(evsig, NULL);
 
+    // Comment the line below for valgrind check
     event_base_dispatch(ctx->base);
+    event_free(recv_ev);
+    event_free(evsig);
+    acceptor_ctx_destroy(ctx);
+
     return EXIT_SUCCESS;
 }
