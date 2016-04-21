@@ -12,9 +12,6 @@ typedef struct CoordinatorCtx {
     int cur_inst;
     int listen_port;
     evutil_socket_t sock;
-    Message *msg;
-    char *buf;
-    char *padding;
 } CoordinatorCtx;
 
 int start_coordinator(Config *conf);

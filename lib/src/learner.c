@@ -30,11 +30,6 @@ LearnerCtx *learner_ctx_new(Config conf) {
     ctx->num_packets = 0;
     double maj = ((double)(conf.num_acceptors + 1)) / 2;
     ctx->maj = ceil(maj);
-    ctx->msg = malloc(sizeof(Message));
-    bzero(ctx->msg, sizeof(Message));
-    if (ctx->msg == NULL) {
-        perror("Unable to allocate memory for msg\n");
-    }
     ctx->states = calloc(ctx->conf.maxinst, sizeof(paxos_state*));
     int i;
     for (i = 0; i < ctx->conf.maxinst; i++) {
@@ -59,7 +54,6 @@ void learner_ctx_destroy(LearnerCtx *ctx) {
     int i;
     // fclose(ctx->fp);
     event_base_free(ctx->base);
-    free(ctx->msg);
     for (i = 0; i < ctx->conf.maxinst; i++) {
         free(ctx->states[i]->paxosval);
         free(ctx->states[i]);
@@ -100,7 +94,7 @@ void handle_accepted(LearnerCtx *ctx, Message *msg, evutil_socket_t fd) {
         if (!exist) {
             state->from = state->from | mask;
             state->count++;
-            strcpy(state->paxosval, ctx->msg->paxosval);
+            strcpy(state->paxosval, msg->paxosval);
             // printf("instance: %d - count %d\n", msg->inst, state->count);
             if (state->count == ctx->maj) { // Chosen value
                 state->finished = 1;        // Marked values has been chosen
@@ -121,7 +115,7 @@ void handle_accepted(LearnerCtx *ctx, Message *msg, evutil_socket_t fd) {
         int mask = 1 << msg->acptid;
         state->from = state->from | mask;
         state->count = 1;
-        strcpy(state->paxosval, ctx->msg->paxosval);
+        strcpy(state->paxosval, msg->paxosval);
     }
 }
 
@@ -136,20 +130,19 @@ void cb_func(evutil_socket_t fd, short what, void *arg)
 
     n = recvfrom(fd, &msg, 60, 0, (struct sockaddr *) &remote, &remote_len);
     if (n < 0) {perror("ERROR in recvfrom"); return; }
-    unpack(ctx->msg, &msg);
+    unpack(&msg);
     if (ctx->conf.verbose) {
         printf("Received %d bytes from %s:%d\n", n, inet_ntoa(remote.sin_addr),
                 ntohs(remote.sin_port));
-        print_message(ctx->msg);
+        print_message(&msg);
     }
-    if (ctx->msg->inst > ctx->conf.maxinst) {
+    if (msg.inst > ctx->conf.maxinst) {
         if (ctx->conf.verbose) {
             fprintf(stderr, "State Overflow\n");
         }
         return;
     }
-
-    handle_accepted(ctx, ctx->msg, fd);
+    handle_accepted(ctx, &msg, fd);
 }
 
 

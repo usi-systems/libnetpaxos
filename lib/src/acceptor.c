@@ -25,11 +25,6 @@ AcceptorCtx *acceptor_ctx_new(Config conf, int acceptor_id) {
     AcceptorCtx *ctx = malloc(sizeof(AcceptorCtx));
     ctx->conf = conf;
     ctx->acceptor_id = acceptor_id;
-    ctx->msg = malloc(sizeof(Message));
-    bzero(ctx->msg, sizeof(Message));
-    if (ctx->msg == NULL) {
-        perror("Unable to allocate memory for msg\n");
-    }
     ctx->states = calloc(ctx->conf.maxinst, sizeof(a_state));
     int i;
     for (i = 0; i < ctx->conf.maxinst; i++) {
@@ -53,7 +48,6 @@ void acceptor_ctx_destroy(AcceptorCtx *ctx) {
     event_base_free(ctx->base);
     free(ctx->learner_addr);
     // fclose(ctx->fp);
-    free(ctx->msg);
     for (i = 0; i < ctx->conf.maxinst; i++) {
         free(ctx->states[i]->paxosval);
         free(ctx->states[i]);
@@ -94,7 +88,7 @@ int handle_phase2a(AcceptorCtx *ctx, Message *msg) {
     if (msg->rnd >= state->rnd) {
         state->rnd = msg->rnd;
         state->vrnd = msg->rnd;
-        strcpy(state->paxosval, ctx->msg->paxosval);
+        strcpy(state->paxosval, msg->paxosval);
         msg->acptid = ctx->acceptor_id;
         msg->msgtype = phase2b;
         return 1;
@@ -112,28 +106,28 @@ void cb_func(evutil_socket_t fd, short what, void *arg)
 
     n = recvfrom(fd, &msg, sizeof(Message), 0, (struct sockaddr *) &remote, &remote_len);
     if (n < 0) {perror("ERROR in recvfrom"); return; }
-    unpack(ctx->msg, &msg);
+    unpack(&msg);
     if (ctx->conf.verbose) {
         printf("Received %d bytes from %s:%d\n", n, inet_ntoa(remote.sin_addr),
                 ntohs(remote.sin_port));
-        print_message(ctx->msg);
+        print_message(&msg);
     }
-    if (ctx->msg->inst > ctx->conf.maxinst) {
+    if (msg.inst > ctx->conf.maxinst) {
         if (ctx->conf.verbose) {
             fprintf(stderr, "State Overflow\n");
         }
         return;
     }
 
-    if (ctx->msg->msgtype == phase1a) {
-        res = handle_phase1a(ctx, ctx->msg);
+    if (msg.msgtype == phase1a) {
+        res = handle_phase1a(ctx, &msg);
     }
-    else if (ctx->msg->msgtype == phase2a) {
-        res = handle_phase2a(ctx, ctx->msg);
+    else if (msg.msgtype == phase2a) {
+        res = handle_phase2a(ctx, &msg);
     }
 
     if (res) {
-        pack(&msg, ctx->msg);
+        pack(&msg);
         // send to learners
         socklen_t addr_len = sizeof(*ctx->learner_addr);
         n = sendto(fd, &msg, sizeof(Message), 0, (struct sockaddr*) ctx->learner_addr, addr_len);

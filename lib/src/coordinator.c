@@ -30,9 +30,6 @@ CoordinatorCtx *proposer_ctx_new(Config conf) {
     CoordinatorCtx *ctx = malloc(sizeof(CoordinatorCtx));
     ctx->conf = conf;
     ctx->cur_inst = 0;
-    ctx->buf = malloc(BUF_SIZE);
-    ctx->msg = malloc(sizeof(Message)); 
-    bzero(ctx->msg, sizeof(Message));
     return ctx;
 }
 
@@ -60,7 +57,7 @@ void on_value(evutil_socket_t fd, short what, void *arg)
 
 void propose_value(CoordinatorCtx *ctx, void *arg, int size, struct sockaddr_in client)
 {
-    char *v = (char*) arg;
+    char *v = arg;
     socklen_t serverlen = sizeof(*ctx->acceptor_addr);
     Message msg;
     initialize_message(&msg, phase2a);
@@ -73,9 +70,9 @@ void propose_value(CoordinatorCtx *ctx, void *arg, int size, struct sockaddr_in 
     int maxlen = ( size < PAXOS_VALUE_SIZE ? size : PAXOS_VALUE_SIZE - 1);
     strncpy(msg.paxosval, v, maxlen);
 
-    pack(ctx->msg, &msg);
+    pack(&msg);
 
-    int n = sendto(ctx->sock, ctx->msg, sizeof(Message), 0, (struct sockaddr*) ctx->acceptor_addr, serverlen);
+    int n = sendto(ctx->sock, &msg, sizeof(Message), 0, (struct sockaddr*) ctx->acceptor_addr, serverlen);
     if (n < 0) {
         perror("ERROR in sendto");
         return;

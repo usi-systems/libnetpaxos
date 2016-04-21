@@ -26,7 +26,7 @@ typedef struct Message {
 
 
 void print_message(Message *m);
-void pack(Message *dst, const Message *src);
-void unpack(Message *dst, const Message *src);
+void pack(Message *src);
+void unpack(Message *src);
 void initialize_message(Message *m, int msgtype);
 #endif

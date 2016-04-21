@@ -17,7 +17,6 @@ typedef struct AcceptorCtx {
     int acceptor_id;
     struct event_base *base;
     Config conf;
-    Message *msg;
     a_state* *states;
     FILE *fp;
     struct sockaddr_in *learner_addr;

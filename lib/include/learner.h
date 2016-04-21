@@ -21,7 +21,6 @@ typedef struct LearnerCtx {
     int mps;
     int num_packets;
     int maj;
-    Message *msg;
     paxos_state* *states;
     FILE *fp;
     void *(*deliver)(const char* value, void* arg);
