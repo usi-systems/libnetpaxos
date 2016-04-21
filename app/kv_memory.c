@@ -111,21 +111,11 @@ void *deliver(const char* chosen, void *arg) {
 
 
 int main(int argc, char* argv[]) {
-    struct application *state = application_new();
-
-    char key[] = "my_id";
-    char value[] = "my_value";
-    add_entry(&state->hashmap, key, value);
-    struct kv_entry *user = find_entry(&state->hashmap, key);
-    if (user) {
-        printf("hm[%s]=%s\n", user->key, user->value);
-    }
-    delete_entry(&state->hashmap, user);
-
     if (argc != 3) {
         printf("%s config-file node_id\n", argv[0]);
         exit(EXIT_FAILURE);
     }
+    struct application *state = application_new();
     Config *conf = parse_conf(argv[1]);
     conf->node_id = atoi(argv[2]);
     start_learner(conf, deliver, state);
