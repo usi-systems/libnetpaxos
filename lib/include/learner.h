@@ -24,10 +24,10 @@ typedef struct LearnerCtx {
     Message *msg;
     paxos_state* *states;
     FILE *fp;
-    void *(*deliver)(char* value, void* arg);
+    void *(*deliver)(const char* value, void* arg);
     void *app;
 } LearnerCtx;
 
-int start_learner(Config *conf, void *(*deliver_cb)(char* value, void* arg), void* arg);
+int start_learner(Config *conf, void *(*deliver_cb)(const char* value, void* arg), void* arg);
 
 #endif

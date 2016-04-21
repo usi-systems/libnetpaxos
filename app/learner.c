@@ -5,7 +5,7 @@
 #include "learner.h"
 #include "config.h"
 
-void *deliver(char* value, void *arg) {
+void *deliver(const char* value, void *arg) {
     printf("delivered %s\n", value);
 }
 

@@ -151,7 +151,7 @@ void cb_func(evutil_socket_t fd, short what, void *arg)
 }
 
 
-int start_learner(Config *conf, void *(*deliver_cb)(char* value, void* arg), void* arg) {
+int start_learner(Config *conf, void *(*deliver_cb)(const char* value, void* arg), void* arg) {
     LearnerCtx *ctx = learner_ctx_new(*conf);
     ctx->base = event_base_new();
     ctx->app = arg;
