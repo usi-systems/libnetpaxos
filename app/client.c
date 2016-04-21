@@ -21,7 +21,10 @@
 #include "config.h"
 
 #define BUF_SIZE 1500
+#define MSGSIZE 32
+
 void send_message(evutil_socket_t fd, struct sockaddr_in *addr, int idx);
+
 
 struct client_state {
     int mps;
@@ -69,7 +72,7 @@ void on_response(evutil_socket_t fd, short what, void *arg) {
             double latency = (result.tv_sec + ((double)result.tv_nsec) / 1e9);
             fprintf(state->fp, "%.9f\n", latency);
         }
-        // printf("on value: %s: %d length, addr_length: %d\n", recvbuf, n, remote_len);
+        printf("on value: %s: %d length, addr_length: %d\n", recvbuf, n, remote_len);
         // clean receiving buffer
         memset(recvbuf, 0, BUF_SIZE);
 
@@ -84,15 +87,34 @@ void on_response(evutil_socket_t fd, short what, void *arg) {
 }
 
 void send_message(evutil_socket_t fd, struct sockaddr_in *addr, int count) {
+    char msg[MSGSIZE];
+    int n, size;
+    if (count % 2) {
+        char command = 'P';
+        char key[] = "key";
+        char value[] = "val";
+        msg[0] = command;
+        msg[1] = (unsigned char) strlen(key);
+        msg[2] = (unsigned char) strlen(value);
+        memcpy(&msg[3], key, msg[1]);
+        memcpy(&msg[3+msg[1]], value, msg[2]);
+        size = msg[1] + msg[2] + 4; // 3 for three chars and 1 for terminator
+    } else {
+        char command = 'G';
+        char key[] = "key";
+        msg[0] = command;
+        msg[1] = (unsigned char) strlen(key);
+        msg[2] = 1;
+        memcpy(&msg[3], key, msg[1]);
+        size = msg[1] + 4; // 3 for three chars and 1 for terminator
+    }
     socklen_t len = sizeof(struct sockaddr_in);
-    // Warning: Fit message in 16 Bytes
-    char *msg[] = { "PUT key val", "GET key", "DEL key", "GET not"};
-    int idx = count % 4;
-    int n = sendto(fd, msg[idx], strlen(msg[idx]), 0, (struct sockaddr*) addr, len);
+    n = sendto(fd, msg, size, 0, (struct sockaddr*) addr, len);
     if (n < 0) {
         perror("ERROR in sendto");
         return;
     }
+    bzero(msg, MSGSIZE);
 }
 
 struct client_state* client_state_new() {

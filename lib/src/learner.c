@@ -102,12 +102,18 @@ void handle_accepted(LearnerCtx *ctx, Message *msg, evutil_socket_t fd) {
                 char *res = ctx->deliver(state->paxosval, ctx->app);
                 ctx->mps++;
                 ctx->num_packets++;
-                if (!res) {
-                    res = strdup("SERVER ERROR");
+                int n;
+                if (res) {
+                    n = sendto(fd, res, strlen(res), 0, (struct sockaddr*) &msg->client, sizeof(msg->client));
+                    free(res);
+                } else {
+                    char data[] = "NOT FOUND";
+                    n = sendto(fd, data, sizeof(data), 0, (struct sockaddr*) &msg->client, sizeof(msg->client));
                 }
-                int n = sendto(fd, res, strlen(res), 0, (struct sockaddr*) &msg->client, sizeof(msg->client));
-                if (n < 0) {perror("ERROR in sendto"); return; }
-                free(res);
+                if (n < 0) {
+                    perror("ERROR in sendto");
+                    return;
+                }
             }
         }
     } else if (msg->rnd > state->rnd) {

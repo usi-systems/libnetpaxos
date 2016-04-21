@@ -53,57 +53,43 @@ void delete_entry(struct kv_entry **hashmap, struct kv_entry *entry) {
     free(entry);              /* optional; it's up to you! */
 }
 
-void *deliver(const char* chosen, void *arg) {
+void *deliver(const char* request, void *arg) {
     struct application *state = arg;
-    // printf("delivered %s\n", chosen);
-    if (!chosen || chosen[0] == '\0') {
+    if (!request || request[0] == '\0') {
         return NULL;
     }
-    char *chosen_duplicate = strdup(chosen);
-    char* token = strtok(chosen_duplicate, " ");
     size_t read_len;
-    if (strcmp(token, "PUT") == 0) {
-        char *key = strtok(NULL, " ");
-        if (!key) {
-            free(chosen_duplicate);
-            return strdup("Key is NULL");
+    char op = request[0];
+    switch(op) {
+        case 'P': {
+            unsigned char ksize = request[1];
+            unsigned char vsize = request[2];
+            char key[ksize+1];
+            memcpy(key, &request[3], ksize);
+            char value[vsize+1];
+            memcpy(value, &request[3 + ksize], vsize);
+            add_entry(&state->hashmap, key, value);
+            return strdup("SUCCESS");
         }
-        char *val = strtok(NULL, " ");
-        if (!val) {
-            free(chosen_duplicate);
-            return strdup("Value is NULL");
+        case 'G': {
+            unsigned char ksize = request[1];
+            char key[ksize+1];
+            memcpy(key, &request[3], ksize);
+            struct kv_entry *entry = find_entry(&state->hashmap, key);
+            if (entry) {
+                char *val = strdup(entry->value);
+                return val;
+            }
         }
-        add_entry(&state->hashmap, key, val);
-        return strdup("PUT OK");
-    }
-    else if (strcmp(token, "GET") == 0) {
-        char *key = strtok(NULL, " ");
-        if (!key) {
-            free(chosen_duplicate);
-            return strdup("Key is NULL");
-        }
-        struct kv_entry *entry = find_entry(&state->hashmap, key);
-        if (!entry) {
-            free(chosen_duplicate);
-            return strdup("NOT FOUND");
-        }
-        char *val = strdup(entry->value);
-        return val;
-    }
-    else if (strcmp(token, "DEL") == 0) {
-        char *key = strtok(NULL, " ");
-        if (!key) {
-            free(chosen_duplicate);
-            return strdup("Key is NULL");
-        }
-        struct kv_entry *entry = find_entry(&state->hashmap, key);
-        if (entry) {
-            delete_entry(&state->hashmap, entry);
-            free(chosen_duplicate);
-            return strdup("DELETE OK");
-        }  else {
-            free(chosen_duplicate);
-            return strdup("KEY NOT FOUND");
+        case 'D': {
+            unsigned char ksize = request[1];
+            char key[ksize+1];
+            memcpy(key, &request[3], ksize);
+            struct kv_entry *entry = find_entry(&state->hashmap, key);
+            if (entry) {
+                delete_entry(&state->hashmap, entry);
+                return strdup("DELETE OK");
+            }
         }
     }
     return NULL;

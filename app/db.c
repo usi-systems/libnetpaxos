@@ -47,74 +47,55 @@ void application_destroy(struct application *state) {
 
 }
 
-void *deliver(const char* chosen, void *arg) {
-    struct application *state = (struct application *)arg;
-    // printf("delivered %s\n", chosen);
-    if (!chosen || chosen[0] == '\0') {
+void *deliver(const char* request, void *arg) {
+    struct application *state = arg;
+    if (!request || request[0] == '\0') {
         return NULL;
     }
     char *err = NULL;
-    char *chosen_duplicate = strdup(chosen);
-    char* token = strtok(chosen_duplicate, " ");
-    size_t read_len;
-    if (strcmp(token, "PUT") == 0) {
-        char *key = strtok(NULL, " ");
-        if (!key) {
-            free(chosen_duplicate);
-            return strdup("Key is NULL");
+    char op = request[0];
+    switch(op) {
+        case 'P': {
+            unsigned char ksize = request[1];
+            unsigned char vsize = request[2];
+            char key[ksize+1];
+            memcpy(key, &request[3], ksize);
+            char value[vsize+1];
+            memcpy(value, &request[3 + ksize], vsize);
+            leveldb_put(state->db, state->woptions, key, ksize + 1, value, vsize + 1, &err);
+            if (err != NULL) {
+                return err;
+            }
+            leveldb_free(err); err = NULL;
+            return strdup("SUCCESS");
         }
-        char *val = strtok(NULL, " ");
-        if (!val) {
-            free(chosen_duplicate);
-            return strdup("Value is NULL");
+        case 'G': {
+            unsigned char ksize = request[1];
+            char key[ksize+1];
+            memcpy(key, &request[3], ksize);
+            key[ksize] = '\0';
+            size_t read_len;
+            char *val = leveldb_get(state->db, state->roptions, key, ksize + 1, &read_len, &err);
+            if (err != NULL) {
+                return err;
+            }
+            leveldb_free(err); err = NULL;
+            if (val) {
+                return val;
+            }
         }
-        size_t keylen = strlen(key) + 1;
-        size_t vallen = strlen(val) + 1;
-        // printf("PUT (%s:%zu, %s:%zu)\n", key, keylen, val, vallen);
-        leveldb_put(state->db, state->woptions, key, keylen, val, vallen, &err);
-        if (err != NULL) {
-            free(chosen_duplicate);
-            return err;
+        case 'D': {
+            unsigned char ksize = request[1];
+            char key[ksize+1];
+            memcpy(key, &request[3], ksize);
+            key[ksize] = '\0';
+            leveldb_delete(state->db, state->woptions, key, ksize + 1, &err);
+            if (err != NULL) {
+                return err;
+            }
+            leveldb_free(err); err = NULL;
+            return strdup("DELETE OK");
         }
-        leveldb_free(err); err = NULL;
-        return strdup("PUT OK");
-    }
-    else if (strcmp(token, "GET") == 0) {
-        char *key = strtok(NULL, " ");
-        if (!key) {
-            free(chosen_duplicate);
-            return strdup("Key is NULL");
-        }
-        int keylen = strlen(key) + 1;
-        // printf("PUT (%s:%zu)\n", key, keylen);
-        char *val = leveldb_get(state->db, state->roptions, key, keylen, &read_len, &err);
-        if (err != NULL) {
-            free(chosen_duplicate);
-            return err;
-        }
-        leveldb_free(err); err = NULL;
-        // printf("%s: %s\n", key, val);
-        if (!val) {
-            free(chosen_duplicate);
-            return strdup("NOT FOUND");
-        }
-        return val;
-    }
-    else if (strcmp(token, "DEL") == 0) {
-        char *key = strtok(NULL, " ");
-        if (!key) {
-            free(chosen_duplicate);
-            return strdup("Key is NULL");
-        }
-        int keylen = strlen(key) + 1;
-        leveldb_delete(state->db, state->woptions, key, keylen, &err);
-        if (err != NULL) {
-            free(chosen_duplicate);
-            return err;
-        }
-        leveldb_free(err); err = NULL;
-        free(chosen_duplicate);
-        return strdup("DELETE OK");
     }
     return NULL;
 }
