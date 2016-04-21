@@ -88,7 +88,7 @@ void propose_value(CoordinatorCtx *ctx, void *arg, int size, struct sockaddr_in 
     ctx->cur_inst++;
 }
 
-int start_coordinator(Config *conf, int port) {
+int start_coordinator(Config *conf) {
     CoordinatorCtx *ctx = proposer_ctx_new(*conf);
     ctx->base = event_base_new();
     struct hostent *server;
@@ -117,7 +117,7 @@ int start_coordinator(Config *conf, int port) {
     ctx->acceptor_addr->sin_port = htons(conf->acceptor_port);
 
     struct event *ev_recv;
-    int listen_socket = create_server_socket(port);
+    int listen_socket = create_server_socket(conf->proposer_port);
     addMembership(conf->proposer_addr, listen_socket);
     ev_recv = event_new(ctx->base, listen_socket, EV_READ|EV_PERSIST, on_value, ctx);
 
