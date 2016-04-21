@@ -1,6 +1,6 @@
-The benchmark depends on the libevent library. Setup libevent in ubuntu 14.04
+The benchmark depends on the libevent, LevelDB libraries. Setup depedencies:
 ```
-sudo apt-get install -y libevent-dev
+sudo ./install_deps.sh
 ```
 
 # Build the microbenchmark
@@ -12,16 +12,28 @@ cmake -DCMAKE_BUILD_TYPE=Release ..
 make
 ```
 
-# How to run a learner (server)
+# How to run
 
 In the Release directory, run:
 
-```
-./learner ../libperf.conf
-```
-
-# How to run the proposer (client)
+## Coordinator
 
 ```
-./proposer ../libperf.conf
+./coordinator ../libperf.conf 0
+```
+## Acceptor
+
+```
+./acceptor ../libperf.conf 0
+```
+## Learners (learner / kv_memory / db )
+
+```
+./kv_memory ../libperf.conf 0
+```
+
+# How to run clients
+
+```
+./client ../libperf.conf client-output
 ```

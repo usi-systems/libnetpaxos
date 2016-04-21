@@ -8,11 +8,11 @@ fi
 if [ -f /etc/debian_version ]; then
     OS="Debian"
     VER=$(cat /etc/debian_version)
-    apt-get install -y libsnappy1 libsnappy-dev
+    apt-get install -y libsnappy1 libsnappy-dev libevent-dev
 elif [ -f /etc/redhat-release ]; then
     OS="Red Hat"
     VER=$(cat /etc/redhat-release)
-    yum install -y snappy snappy-devel
+    yum install -y snappy snappy-devel libevent libevent-devel
 fi
 
 cd /tmp && wget https://github.com/google/leveldb/archive/v1.18.tar.gz
