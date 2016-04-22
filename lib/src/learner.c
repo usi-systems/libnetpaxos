@@ -86,42 +86,45 @@ void monitor(evutil_socket_t fd, short what, void *arg) {
 
 void handle_accepted(LearnerCtx *ctx, Message *msg, evutil_socket_t fd) {
     paxos_state *state = ctx->states[msg->inst];
+    if (!state->finished) {
+        if (msg->rnd == state->rnd) {
+            int mask = 1 << msg->acptid;
+            int exist = state->from & mask;
 
-    if (msg->rnd == state->rnd) {
-        int mask = 1 << msg->acptid;
-        int exist = state->from & mask;
-
-        if (!exist) {
-            state->from = state->from | mask;
-            state->count++;
-            strcpy(state->paxosval, msg->paxosval);
-            // printf("instance: %d - count %d\n", msg->inst, state->count);
-            if (state->count == ctx->maj) { // Chosen value
-                state->finished = 1;        // Marked values has been chosen
-                // printf("deliver %d\n", msg->inst);
-                char *res = ctx->deliver(state->paxosval, ctx->app);
-                ctx->mps++;
-                ctx->num_packets++;
-                int n;
-                if (res) {
-                    n = sendto(fd, res, strlen(res), 0, (struct sockaddr*) &msg->client, sizeof(msg->client));
-                    free(res);
-                } else {
-                    char data[] = "NOT FOUND";
-                    n = sendto(fd, data, sizeof(data), 0, (struct sockaddr*) &msg->client, sizeof(msg->client));
+            if (!exist) {
+                state->from = state->from | mask;
+                state->count++;
+                if (!state->paxosval[0]) {
+                    strcpy(state->paxosval, msg->paxosval);
                 }
-                if (n < 0) {
-                    perror("ERROR in sendto");
-                    return;
+                // printf("instance: %d - count %d\n", msg->inst, state->count);
+                if (state->count == ctx->maj) { // Chosen value
+                    state->finished = 1;        // Marked values has been chosen
+                    // printf("deliver %d\n", msg->inst);
+                    char *res = ctx->deliver(state->paxosval, ctx->app);
+                    ctx->mps++;
+                    ctx->num_packets++;
+                    int n;
+                    if (res) {
+                        n = sendto(fd, res, strlen(res), 0, (struct sockaddr*) &msg->client, sizeof(msg->client));
+                        free(res);
+                    } else {
+                        char data[] = "NOT FOUND";
+                        n = sendto(fd, data, sizeof(data), 0, (struct sockaddr*) &msg->client, sizeof(msg->client));
+                    }
+                    if (n < 0) {
+                        perror("ERROR in sendto");
+                        return;
+                    }
                 }
             }
+        } else if (msg->rnd > state->rnd) {
+            state->rnd = msg->rnd;
+            int mask = 1 << msg->acptid;
+            state->from = state->from | mask;
+            state->count = 1;
+            strcpy(state->paxosval, msg->paxosval);
         }
-    } else if (msg->rnd > state->rnd) {
-        state->rnd = msg->rnd;
-        int mask = 1 << msg->acptid;
-        state->from = state->from | mask;
-        state->count = 1;
-        strcpy(state->paxosval, msg->paxosval);
     }
 }
 
