@@ -56,6 +56,7 @@ void on_response(evutil_socket_t fd, short what, void *arg) {
     struct client_state *state = (struct client_state*) arg;
     struct timespec recv_time, result;
     if (what&EV_READ) {
+        state->mps++;
         struct sockaddr_in remote;
         socklen_t remote_len = sizeof(remote);
         char recvbuf[BUF_SIZE];
@@ -72,13 +73,11 @@ void on_response(evutil_socket_t fd, short what, void *arg) {
             double latency = (result.tv_sec + ((double)result.tv_nsec) / 1e9);
             fprintf(state->fp, "%.9f\n", latency);
         }
-        printf("on value: %s: %d length, addr_length: %d\n", recvbuf, n, remote_len);
+        // printf("on value: %s: %d length, addr_length: %d\n", recvbuf, n, remote_len);
         // clean receiving buffer
         memset(recvbuf, 0, BUF_SIZE);
-
         send_message(fd, state->proposer, state->mps);
         gettime(&state->send_time);
-        state->mps++;
     } else if (what&EV_TIMEOUT) {
         // printf("on timeout, send.\n");
         send_message(fd, state->proposer, state->mps);
@@ -89,7 +88,7 @@ void on_response(evutil_socket_t fd, short what, void *arg) {
 void send_message(evutil_socket_t fd, struct sockaddr_in *addr, int count) {
     char msg[MSGSIZE];
     int n, size;
-    if (count % 2) {
+    if (count % 2 == 0) {
         char command = 'P';
         char key[] = "key";
         char value[] = "val";
@@ -108,6 +107,7 @@ void send_message(evutil_socket_t fd, struct sockaddr_in *addr, int count) {
         memcpy(&msg[3], key, msg[1]);
         size = msg[1] + 4; // 3 for three chars and 1 for terminator
     }
+    msg[size-1] = '\0';
     socklen_t len = sizeof(struct sockaddr_in);
     n = sendto(fd, msg, size, 0, (struct sockaddr*) addr, len);
     if (n < 0) {

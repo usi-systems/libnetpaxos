@@ -54,15 +54,12 @@ void *deliver(const char* request, void *arg) {
     }
     char *err = NULL;
     char op = request[0];
+    size_t read_len;
     switch(op) {
         case 'P': {
             unsigned char ksize = request[1];
             unsigned char vsize = request[2];
-            char key[ksize+1];
-            memcpy(key, &request[3], ksize);
-            char value[vsize+1];
-            memcpy(value, &request[3 + ksize], vsize);
-            leveldb_put(state->db, state->woptions, key, ksize + 1, value, vsize + 1, &err);
+            leveldb_put(state->db, state->woptions, &request[3], ksize, &request[3+ksize], vsize, &err);
             if (err != NULL) {
                 return err;
             }
@@ -71,11 +68,7 @@ void *deliver(const char* request, void *arg) {
         }
         case 'G': {
             unsigned char ksize = request[1];
-            char key[ksize+1];
-            memcpy(key, &request[3], ksize);
-            key[ksize] = '\0';
-            size_t read_len;
-            char *val = leveldb_get(state->db, state->roptions, key, ksize + 1, &read_len, &err);
+            char *val = leveldb_get(state->db, state->roptions, &request[3], ksize, &read_len, &err);
             if (err != NULL) {
                 return err;
             }
@@ -86,10 +79,7 @@ void *deliver(const char* request, void *arg) {
         }
         case 'D': {
             unsigned char ksize = request[1];
-            char key[ksize+1];
-            memcpy(key, &request[3], ksize);
-            key[ksize] = '\0';
-            leveldb_delete(state->db, state->woptions, key, ksize + 1, &err);
+            leveldb_delete(state->db, state->woptions, &request[3], ksize, &err);
             if (err != NULL) {
                 return err;
             }

@@ -29,19 +29,19 @@ void application_destroy(struct application *state) {
     free(state);
 }
 
-void add_entry(struct kv_entry **hashmap, char *key, char *value) {
+void add_entry(struct kv_entry **hashmap, const char *key, int ksize, const char *value, int vsize) {
     struct kv_entry *s;
     HASH_FIND_STR(*hashmap, key, s);
     if (s==NULL) {
         s = malloc(sizeof(struct kv_entry));
         s->key = key;
-        HASH_ADD_KEYPTR( hh, *hashmap, s->key, strlen(s->key), s );  /* id: value of key field */
+        HASH_ADD_KEYPTR( hh, *hashmap, s->key, ksize, s );  /* id: value of key field */
     }
-    strcpy(s->value, value);
+    memcpy(s->value, value, vsize);
 }
 
 
-struct kv_entry *find_entry(struct kv_entry **hashmap, char *key) {
+struct kv_entry *find_entry(struct kv_entry **hashmap, const char *key, int ksize) {
     struct kv_entry *s;
     HASH_FIND_STR( *hashmap, key, s );  /* s: output pointer */
     return s;
@@ -64,18 +64,12 @@ void *deliver(const char* request, void *arg) {
         case 'P': {
             unsigned char ksize = request[1];
             unsigned char vsize = request[2];
-            char key[ksize+1];
-            memcpy(key, &request[3], ksize);
-            char value[vsize+1];
-            memcpy(value, &request[3 + ksize], vsize);
-            add_entry(&state->hashmap, key, value);
+            add_entry(&state->hashmap, &request[3], ksize, &request[3+ksize], vsize);
             return strdup("SUCCESS");
         }
         case 'G': {
             unsigned char ksize = request[1];
-            char key[ksize+1];
-            memcpy(key, &request[3], ksize);
-            struct kv_entry *entry = find_entry(&state->hashmap, key);
+            struct kv_entry *entry = find_entry(&state->hashmap, &request[3], ksize);
             if (entry) {
                 char *val = strdup(entry->value);
                 return val;
@@ -83,9 +77,7 @@ void *deliver(const char* request, void *arg) {
         }
         case 'D': {
             unsigned char ksize = request[1];
-            char key[ksize+1];
-            memcpy(key, &request[3], ksize);
-            struct kv_entry *entry = find_entry(&state->hashmap, key);
+            struct kv_entry *entry = find_entry(&state->hashmap, &request[3], ksize);
             if (entry) {
                 delete_entry(&state->hashmap, entry);
                 return strdup("DELETE OK");
