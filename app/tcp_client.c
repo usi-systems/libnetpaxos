@@ -6,6 +6,9 @@
 #include <stdlib.h>
 #include <time.h>
 
+#include "application.h"
+
+#define BUFSIZE 128
 struct info {
     struct event_base *base;
     int mps;
@@ -16,8 +19,6 @@ struct info {
     FILE *fp;
 };
 
-// char *msg[] = { "PUT key val", "GET key", "DEL key", "GET not"};
-
 void monitor(evutil_socket_t fd, short what, void *arg) {
     struct info *inf = arg;
     if ( inf->mps ) {
@@ -26,9 +27,40 @@ void monitor(evutil_socket_t fd, short what, void *arg) {
     inf->mps = 0;
 }
 
-void submit(struct bufferevent *bev, char* req, int size) {
-    // printf("%s %d\n", req, size);
-    bufferevent_write(bev, req, size);
+void submit(struct bufferevent *bev, char* req) {
+    char msg[BUFSIZE];
+    char* replica = strdup(req);
+    char* token = strtok(replica, " ");
+    int size;
+    if (strcmp(token, "PUT") == 0) {
+        char *key = strtok(NULL, " ");
+        char *value = strtok(NULL, " ");
+        msg[0] = PUT;
+        msg[1] = (unsigned char) strlen(key);
+        msg[2] = (unsigned char) strlen(value);
+        memcpy(&msg[3], key, msg[1]);
+        memcpy(&msg[3+msg[1]], value, msg[2]);
+        size = msg[1] + msg[2] + 4; // 3 for three chars and 1 for terminator
+    }
+    else if (strcmp(token, "GET") == 0) {
+        char *key = strtok(NULL, " ");
+        msg[0] = GET;
+        msg[1] = (unsigned char) strlen(key);
+        msg[2] = 1;
+        memcpy(&msg[3], key, msg[1]);
+        size = msg[1] + 4; // 3 for three chars and 1 for terminator
+    }
+    else if (strcmp(token, "DEL") == 0) {
+        char *key = strtok(NULL, " ");
+        msg[0] = DELETE;
+        msg[1] = (unsigned char) strlen(key);
+        msg[2] = 1;
+        memcpy(&msg[3], key, msg[1]);
+        size = msg[1] + 4; // 3 for three chars and 1 for terminator
+    }
+    bufferevent_write(bev, msg, size);
+    free(replica);
+    bzero(msg, BUFSIZE);
 }
 
 int timediff(struct timespec *result, struct timespec *end, struct timespec *start)
@@ -46,7 +78,7 @@ void readcb(struct bufferevent *bev, void *ptr)
     clock_gettime(CLOCK_REALTIME, &end);
     struct info *inf = ptr;
     timediff(&result, &end, &inf->start);
-    char buf[1024];
+    char buf[BUFSIZE];
     int n;
     struct evbuffer *input = bufferevent_get_input(bev);
     int negative = timediff(&result, &end, &inf->start);
@@ -62,9 +94,9 @@ void readcb(struct bufferevent *bev, void *ptr)
     }
     inf->mps++;
     int idx = inf->mps % inf->count;
-    int size = strlen(inf->msg[idx]);
-    submit(bev, inf->msg[idx], size);
+    submit(bev, inf->msg[idx]);
     clock_gettime(CLOCK_REALTIME, &inf->start);
+    bzero(buf, BUFSIZE);
 }
 
 void eventcb(struct bufferevent *bev, short events, void *ptr)
@@ -74,7 +106,7 @@ void eventcb(struct bufferevent *bev, short events, void *ptr)
         printf("Connect okay.\n");
         bufferevent_enable(bev, EV_READ|EV_WRITE);
 
-        submit(bev, inf->msg[0], strlen(inf->msg[0]) + 1);
+        submit(bev, inf->msg[0]);
         clock_gettime(CLOCK_REALTIME, &inf->start);
 
     } else if (events & (BEV_EVENT_ERROR|BEV_EVENT_EOF)) {

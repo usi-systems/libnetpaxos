@@ -1,0 +1,3 @@
+PUT key val
+GET key
+DEL key

@@ -18,6 +18,9 @@
 #include <stdio.h>
 #include <errno.h>
 
+#include "learner.h"
+#include "application.h"
+
 #define MAX_LINE 16384
 
 void do_read(evutil_socket_t fd, short events, void *arg);
@@ -70,78 +73,50 @@ void application_free(struct application *ctx) {
 
 
 
-void *deliver(const char* chosen, void *arg) {
-    struct application *state = (struct application *)arg;
-    // printf("delivered %s\n", chosen);
-    if (!chosen || chosen[0] == '\0') {
-        return NULL;
+int deliver(const char* request, void *arg, char **return_val, int *return_vsize) {
+    struct application *state = arg;
+    if (!request || request[0] == '\0') {
+        return FAILED;
     }
     char *err = NULL;
-    char *chosen_duplicate = strdup(chosen);
-    char* token = strtok(chosen_duplicate, " ");
+    char op = request[0];
     size_t read_len;
-    if (strcmp(token, "PUT") == 0) {
-        char *key = strtok(NULL, " ");
-        if (!key) {
-            free(chosen_duplicate);
-            return strdup("Key is NULL");
+    switch(op) {
+        case PUT: {
+            unsigned char ksize = request[1];
+            unsigned char vsize = request[2];
+            leveldb_put(state->db, state->woptions, &request[3], ksize, &request[3+ksize], vsize, &err);
+            if (err != NULL) {
+                leveldb_free(err); err = NULL;
+                return FAILED;
+            }
+            return SUCCESS;
         }
-        char *val = strtok(NULL, " ");
-        if (!val) {
-            free(chosen_duplicate);
-            return strdup("Value is NULL");
+        case GET: {
+            unsigned char ksize = request[1];
+             *return_val = leveldb_get(state->db, state->roptions, &request[3], ksize, &read_len, &err);
+            if (err != NULL) {
+                leveldb_free(err); err = NULL;
+                return FAILED;
+            }
+            if (*return_val) {
+                *return_vsize = read_len;
+                return GOT_VALUE;
+            }
+            return NOT_FOUND;
         }
-        size_t keylen = strlen(key) + 1;
-        size_t vallen = strlen(val) + 1;
-        // printf("PUT (%s:%zu, %s:%zu)\n", key, keylen, val, vallen);
-        leveldb_put(state->db, state->woptions, key, keylen, val, vallen, &err);
-        if (err != NULL) {
-            free(chosen_duplicate);
-            return err;
+        case DELETE: {
+            unsigned char ksize = request[1];
+            leveldb_delete(state->db, state->woptions, &request[3], ksize, &err);
+            if (err != NULL) {
+                leveldb_free(err); err = NULL;
+                return FAILED;
+            }
+            return SUCCESS;
         }
-        leveldb_free(err); err = NULL;
-        return strdup("PUT OK");
     }
-    else if (strcmp(token, "GET") == 0) {
-        char *key = strtok(NULL, " ");
-        if (!key) {
-            free(chosen_duplicate);
-            return strdup("Key is NULL");
-        }
-        int keylen = strlen(key) + 1;
-        // printf("PUT (%s:%zu)\n", key, keylen);
-        char *val = leveldb_get(state->db, state->roptions, key, keylen, &read_len, &err);
-        if (err != NULL) {
-            free(chosen_duplicate);
-            return err;
-        }
-        leveldb_free(err); err = NULL;
-        // printf("%s: %s\n", key, val);
-        if (!val) {
-            free(chosen_duplicate);
-            return strdup("NOT FOUND");
-        }
-        return val;
-    }
-    else if (strcmp(token, "DEL") == 0) {
-        char *key = strtok(NULL, " ");
-        if (!key) {
-            free(chosen_duplicate);
-            return strdup("Key is NULL");
-        }
-        int keylen = strlen(key) + 1;
-        leveldb_delete(state->db, state->woptions, key, keylen, &err);
-        if (err != NULL) {
-            free(chosen_duplicate);
-            return err;
-        }
-        leveldb_free(err); err = NULL;
-        free(chosen_duplicate);
-        return strdup("DELETE OK");
-    }
-    return NULL;
+    return INVALID_OP;
 }
-
 
 void
 readcb(struct bufferevent *bev, void *arg)
@@ -155,16 +130,23 @@ readcb(struct bufferevent *bev, void *arg)
 
     int n = evbuffer_remove(input, request, sizeof(request));
     // printf("received: %s, size: %d\n", request, n);
-    char *res = deliver(request, ctx);
-    if (res) {
-        // printf("sent: %s, size: %zu\n", res, strlen(res) + 1);
-        evbuffer_add(output, res, strlen(res) + 1);
-        free(res);
-        ctx->mps++;
+    char *value;
+    int vsize;
+    int res = deliver(request, ctx, &value, &vsize);
+    ctx->mps++;
+    switch(res) {
+        case SUCCESS:
+            evbuffer_add(output, "SUCCESS", 8);
+            break;
+        case GOT_VALUE: {
+            evbuffer_add(output, value, vsize);
+            free(value);
+            break;
+        }
+        case NOT_FOUND:
+            evbuffer_add(output, "NOT_FOUND", 10);
+            break;
     }
-    // else {
-    //     evbuffer_add(output, "NULL", 5);
-    // }
 }
 
 void
