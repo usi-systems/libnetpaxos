@@ -5,8 +5,8 @@
 #include "learner.h"
 #include "config.h"
 
-void *deliver(const char* value, void *arg) {
-    printf("delivered %s\n", value);
+int deliver(const char* request, void *arg, char** return_val, int *return_vsize) {
+    printf("delivered %s\n", request);
 }
 
 int main(int argc, char* argv[]) {

@@ -20,6 +20,8 @@
 #include "netpaxos_utils.h"
 #include "config.h"
 
+#include "application.h"
+
 #define BUF_SIZE 1500
 #define MSGSIZE 32
 
@@ -31,6 +33,7 @@ struct client_state {
     struct sockaddr_in *proposer;
     struct timespec send_time;
     struct event_base *base;
+    int verbose;
     FILE *fp;
 };
 
@@ -73,7 +76,9 @@ void on_response(evutil_socket_t fd, short what, void *arg) {
             double latency = (result.tv_sec + ((double)result.tv_nsec) / 1e9);
             fprintf(state->fp, "%.9f\n", latency);
         }
-        // printf("on value: %s: %d length, addr_length: %d\n", recvbuf, n, remote_len);
+        if (state->verbose) {
+            printf("on value: %s: %d length, addr_length: %d\n", recvbuf, n, remote_len);
+        }
         // clean receiving buffer
         memset(recvbuf, 0, BUF_SIZE);
         send_message(fd, state->proposer, state->mps);
@@ -89,7 +94,7 @@ void send_message(evutil_socket_t fd, struct sockaddr_in *addr, int count) {
     char msg[MSGSIZE];
     int n, size;
     if (count % 2 == 0) {
-        char command = 'P';
+        char command = PUT;
         char key[] = "key";
         char value[] = "val";
         msg[0] = command;
@@ -99,7 +104,7 @@ void send_message(evutil_socket_t fd, struct sockaddr_in *addr, int count) {
         memcpy(&msg[3+msg[1]], value, msg[2]);
         size = msg[1] + msg[2] + 4; // 3 for three chars and 1 for terminator
     } else {
-        char command = 'G';
+        char command = GET;
         char key[] = "key";
         msg[0] = command;
         msg[1] = (unsigned char) strlen(key);
@@ -138,6 +143,7 @@ int main(int argc, char* argv[]) {
     }
     Config *conf = parse_conf(argv[1]);
     struct client_state *state = client_state_new();
+    state->verbose = conf->verbose;
     struct sockaddr_in *proposer = malloc(sizeof (struct sockaddr_in));
     // socket to send Paxos messages to learners
     int sock = socket(AF_INET, SOCK_DGRAM, 0);

@@ -5,6 +5,13 @@
 #include "config.h"
 #include "message.h"
 
+enum return_code {
+    SUCCESS,
+    GOT_VALUE,
+    NOT_FOUND,
+    INVALID_OP,
+    FAILED
+};
 
 typedef struct paxos_state {
     int rnd;
@@ -23,10 +30,10 @@ typedef struct LearnerCtx {
     int maj;
     paxos_state* *states;
     FILE *fp;
-    void *(*deliver)(const char* value, void* arg);
+    int (*deliver)(const char* req, void* arg, char **value, int *vsize);
     void *app;
 } LearnerCtx;
 
-int start_learner(Config *conf, void *(*deliver_cb)(const char* value, void* arg), void* arg);
+int start_learner(Config *conf, int (*deliver_cb)(const char* req, void* arg, char **value, int *vsize), void* arg);
 
 #endif

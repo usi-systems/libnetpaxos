@@ -6,7 +6,7 @@
 
 #include "learner.h"
 #include "config.h"
-
+#include "application.h"
 
 struct application {
     leveldb_t *db;
@@ -47,47 +47,49 @@ void application_destroy(struct application *state) {
 
 }
 
-void *deliver(const char* request, void *arg) {
+int deliver(const char* request, void *arg, char **return_val, int *return_vsize) {
     struct application *state = arg;
     if (!request || request[0] == '\0') {
-        return NULL;
+        return FAILED;
     }
     char *err = NULL;
     char op = request[0];
     size_t read_len;
     switch(op) {
-        case 'P': {
+        case PUT: {
             unsigned char ksize = request[1];
             unsigned char vsize = request[2];
             leveldb_put(state->db, state->woptions, &request[3], ksize, &request[3+ksize], vsize, &err);
             if (err != NULL) {
-                return err;
+                leveldb_free(err); err = NULL;
+                return FAILED;
             }
-            leveldb_free(err); err = NULL;
-            return strdup("SUCCESS");
+            return SUCCESS;
         }
-        case 'G': {
+        case GET: {
             unsigned char ksize = request[1];
-            char *val = leveldb_get(state->db, state->roptions, &request[3], ksize, &read_len, &err);
+             *return_val = leveldb_get(state->db, state->roptions, &request[3], ksize, &read_len, &err);
             if (err != NULL) {
-                return err;
+                leveldb_free(err); err = NULL;
+                return FAILED;
             }
-            leveldb_free(err); err = NULL;
-            if (val) {
-                return val;
+            if (*return_val) {
+                *return_vsize = read_len;
+                return GOT_VALUE;
             }
+            return NOT_FOUND;
         }
-        case 'D': {
+        case DELETE: {
             unsigned char ksize = request[1];
             leveldb_delete(state->db, state->woptions, &request[3], ksize, &err);
             if (err != NULL) {
-                return err;
+                leveldb_free(err); err = NULL;
+                return FAILED;
             }
-            leveldb_free(err); err = NULL;
-            return strdup("DELETE OK");
+            return SUCCESS;
         }
     }
-    return NULL;
+    return INVALID_OP;
 }
 
 

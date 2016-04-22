@@ -53,10 +53,10 @@ void delete_entry(struct kv_entry **hashmap, struct kv_entry *entry) {
     free(entry);              /* optional; it's up to you! */
 }
 
-void *deliver(const char* request, void *arg) {
+int deliver(const char* request, void *arg, char **return_val, int *return_vsize) {
     struct application *state = arg;
     if (!request || request[0] == '\0') {
-        return NULL;
+        return FAILED;
     }
     size_t read_len;
     char op = request[0];
@@ -65,26 +65,28 @@ void *deliver(const char* request, void *arg) {
             unsigned char ksize = request[1];
             unsigned char vsize = request[2];
             add_entry(&state->hashmap, &request[3], ksize, &request[3+ksize], vsize);
-            return strdup("SUCCESS");
+            return SUCCESS;
         }
         case 'G': {
             unsigned char ksize = request[1];
             struct kv_entry *entry = find_entry(&state->hashmap, &request[3], ksize);
             if (entry) {
-                char *val = strdup(entry->value);
-                return val;
+                *return_val = strdup(entry->value);
+                *return_vsize = strlen(entry->value);
+                return GOT_VALUE;
             }
+            return NOT_FOUND;
         }
         case 'D': {
             unsigned char ksize = request[1];
             struct kv_entry *entry = find_entry(&state->hashmap, &request[3], ksize);
             if (entry) {
                 delete_entry(&state->hashmap, entry);
-                return strdup("DELETE OK");
+                return SUCCESS;
             }
         }
     }
-    return NULL;
+    return INVALID_OP;
 }
 
 

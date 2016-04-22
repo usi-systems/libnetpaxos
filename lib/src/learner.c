@@ -101,20 +101,27 @@ void handle_accepted(LearnerCtx *ctx, Message *msg, evutil_socket_t fd) {
                 if (state->count == ctx->maj) { // Chosen value
                     state->finished = 1;        // Marked values has been chosen
                     // printf("deliver %d\n", msg->inst);
-                    char *res = ctx->deliver(state->paxosval, ctx->app);
+                    char *value;
+                    int vsize;
+                    int res = ctx->deliver(state->paxosval, ctx->app, &value, &vsize);
                     ctx->mps++;
                     ctx->num_packets++;
                     int n;
-                    if (res) {
-                        n = sendto(fd, res, strlen(res), 0, (struct sockaddr*) &msg->client, sizeof(msg->client));
-                        free(res);
-                    } else {
-                        char data[] = "NOT FOUND";
-                        n = sendto(fd, data, sizeof(data), 0, (struct sockaddr*) &msg->client, sizeof(msg->client));
+                    switch(res) {
+                        case SUCCESS:
+                            n = sendto(fd, "SUCCESS", 8, 0, (struct sockaddr*) &msg->client, sizeof(msg->client));
+                            break;
+                        case GOT_VALUE: {
+                            n = sendto(fd, value, vsize, 0, (struct sockaddr*) &msg->client, sizeof(msg->client));
+                            free(value);
+                            break;
+                        }
+                        case NOT_FOUND:
+                            n = sendto(fd, "NOT_FOUND", 10, 0, (struct sockaddr*) &msg->client, sizeof(msg->client));
+                            break;
                     }
                     if (n < 0) {
                         perror("ERROR in sendto");
-                        return;
                     }
                 }
             }
@@ -155,7 +162,7 @@ void cb_func(evutil_socket_t fd, short what, void *arg)
 }
 
 
-int start_learner(Config *conf, void *(*deliver_cb)(const char* value, void* arg), void* arg) {
+int start_learner(Config *conf, int (*deliver_cb)(const char* req, void* arg, char **value, int *vsize), void* arg) {
     LearnerCtx *ctx = learner_ctx_new(*conf);
     ctx->app = arg;
     ctx->deliver = deliver_cb;
