@@ -1,266 +1,251 @@
-/* For sockaddr_in */
-#include <netinet/in.h>
-/* For socket functions */
-#include <sys/socket.h>
-/* For fcntl */
-#include <fcntl.h>
-/* For libevent */
-#include <event2/event.h>
-#include <event2/buffer.h>
-#include <event2/bufferevent.h>
-/* For LevelDB */
 #include <leveldb/c.h>
-
-#include <assert.h>
-#include <unistd.h>
+#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <stdio.h>
-#include <errno.h>
+#include <pthread.h>
+#include <assert.h>
+#include <time.h>
+#include "netpaxos_utils.h"
 
-#include "learner.h"
-#include "application.h"
+pthread_mutex_t mutexmps;
 
-#define MAX_LINE 16384
+enum boolean { false, true };
 
-void do_read(evutil_socket_t fd, short events, void *arg);
-void do_write(evutil_socket_t fd, short events, void *arg);
-
-struct application {
-    struct event_base *base;
+struct data {
     leveldb_t *db;
     leveldb_options_t *options;
     leveldb_readoptions_t *roptions;
     leveldb_writeoptions_t *woptions;
     int mps;
-} application;
+};
 
-struct application* application_new() {
-    struct application *ctx = malloc(sizeof(struct application));
+void open_db(struct data *ctx, char* db_name) {
     char *err = NULL;
-    /******************************************/
-    /* OPEN DB */
     ctx->options = leveldb_options_create();
-    leveldb_options_set_create_if_missing(ctx->options, 1);
-    ctx->db = leveldb_open(ctx->options, "/tmp/ycsb", &err);
+    leveldb_options_set_create_if_missing(ctx->options, true);
+    ctx->db = leveldb_open(ctx->options,db_name, &err);    
     if (err != NULL) {
-      fprintf(stderr, "Open fail.\n");
-      exit(EXIT_FAILURE);
+        fprintf(stderr, "Open fail.\n");
+        leveldb_free(err);
+        exit (EXIT_FAILURE);
     }
-    /* reset error var */
-    leveldb_free(err); err = NULL;
+}
+
+void destroy_db(struct data *ctx, char* db_name) {
+    char *err = NULL;
+    leveldb_destroy_db(ctx->options, db_name, &err);    
+    if (err != NULL) {
+        fprintf(stderr, "Open fail.\n");
+        leveldb_free(err);
+        exit (EXIT_FAILURE);
+    }
+}
+
+int add_entry(struct data *ctx, int sync, char *key, int ksize, char* val, int vsize) {
+    char *err = NULL;
+    leveldb_writeoptions_set_sync(ctx->woptions, sync);
+    leveldb_put(ctx->db, ctx->woptions, key, ksize, val, vsize, &err);
+    if (err != NULL) {
+        fprintf(stderr, "Write fail.\n");
+        leveldb_free(err); err = NULL;
+        return(1);
+    }
+    return 0;
+}
+
+int get_value(struct data *ctx, char *key, size_t ksize, char** val, size_t* vsize) {
+    char *err = NULL;
+    *val = leveldb_get(ctx->db, ctx->roptions, key, ksize, vsize, &err);
+    if (err != NULL) {
+        fprintf(stderr, "Read fail.\n");
+        leveldb_free(err); err = NULL;
+        return(1);
+    }
+    return 0;
+}
+
+int delete_entry(struct data *ctx, char *key, int ksize) {
+    char *err = NULL;
+    leveldb_delete(ctx->db, ctx->woptions, key, ksize, &err);
+    if (err != NULL) {
+        fprintf(stderr, "Delete fail.\n");
+        leveldb_free(err); err = NULL;
+        return(1);
+    }
+    return 0;
+}
+
+struct data *new_data() {
+    char *err = NULL;
+    struct data *ctx = malloc(sizeof(struct data));
     ctx->woptions = leveldb_writeoptions_create();
     ctx->roptions = leveldb_readoptions_create();
-
-    return ctx;
+    ctx->mps = 0;
 }
 
-void application_free(struct application *ctx) {
+void free_data(struct data *ctx) {
     char *err = NULL;
-    event_base_free(ctx->base);
-    leveldb_close(ctx->db);
-    leveldb_destroy_db(ctx->options, "/tmp/ycsb", &err);
-    if (err != NULL) {
-      fprintf(stderr, "Destroy fail.\n");
-      return;
-    }
-    leveldb_free(err); err = NULL;
-    leveldb_options_destroy(ctx->options);
     leveldb_writeoptions_destroy(ctx->woptions);
     leveldb_readoptions_destroy(ctx->roptions);
-    free(ctx);
+    leveldb_options_destroy(ctx->options);
 }
 
-
-
-int deliver(const char* request, void *arg, char **return_val, int *return_vsize) {
-    struct application *state = arg;
-    if (!request || request[0] == '\0') {
-        return FAILED;
-    }
-    char *err = NULL;
-    char op = request[0];
-    size_t read_len;
-    switch(op) {
-        case PUT: {
-            unsigned char ksize = request[1];
-            unsigned char vsize = request[2];
-            leveldb_put(state->db, state->woptions, &request[3], ksize, &request[3+ksize], vsize, &err);
-            if (err != NULL) {
-                leveldb_free(err); err = NULL;
-                return FAILED;
-            }
-            return SUCCESS;
-        }
-        case GET: {
-            unsigned char ksize = request[1];
-             *return_val = leveldb_get(state->db, state->roptions, &request[3], ksize, &read_len, &err);
-            if (err != NULL) {
-                leveldb_free(err); err = NULL;
-                return FAILED;
-            }
-            if (*return_val) {
-                *return_vsize = read_len;
-                return GOT_VALUE;
-            }
-            return NOT_FOUND;
-        }
-        case DELETE: {
-            unsigned char ksize = request[1];
-            leveldb_delete(state->db, state->woptions, &request[3], ksize, &err);
-            if (err != NULL) {
-                leveldb_free(err); err = NULL;
-                return FAILED;
-            }
-            return SUCCESS;
-        }
-    }
-    return INVALID_OP;
-}
-
-void
-readcb(struct bufferevent *bev, void *arg)
+void *monitor(void *arg)
 {
-    struct application *ctx = arg;
-    char request[32];
-    memset(request, 0, 32);
-    struct evbuffer *input, *output;
-    input = bufferevent_get_input(bev);
-    output = bufferevent_get_output(bev);
+    int  *mps = arg;
+    while(true) {
+        pthread_mutex_lock (&mutexmps);
+        printf("%d\n", *mps);
+        *mps = 0;
+        pthread_mutex_unlock (&mutexmps);
+        sleep(1);
+    }
 
-    int n = evbuffer_remove(input, request, sizeof(request));
-    // printf("received: %s, size: %d\n", request, n);
-    char *value;
-    int vsize;
-    int res = deliver(request, ctx, &value, &vsize);
-    ctx->mps++;
-    switch(res) {
-        case SUCCESS:
-            evbuffer_add(output, "SUCCESS", 8);
-            break;
-        case GOT_VALUE: {
-            evbuffer_add(output, value, vsize);
+    return NULL;
+}
+
+static char *rand_string(char *str, size_t size)
+{
+    const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJK...";
+    if (size) {
+        --size;
+        size_t n;
+        for ( n = 0; n < size; n++) {
+            int key = rand() % (int) (sizeof charset - 1);
+            str[n] = charset[key];
+        }
+        str[size] = '\0';
+    }
+    return str;
+}
+
+
+char **generate_array(int n, size_t ksize) {
+    char **keys = calloc(n, sizeof(char*));
+    int i;
+    for (i = 0; i < n; i++) {
+        keys[i] = malloc(ksize);
+        assert(keys[i] != NULL);
+        rand_string(keys[i], ksize);
+    }
+    return keys;
+}
+
+void free_generated_array(char **keys, int n) {
+    int i;
+    for (i = 0; i < n; i++) {
+        free(keys[i]);
+    }
+    free(keys);
+}
+
+void fillsync(struct data *ctx, int num_elements, int num_keys, char** keys, size_t ksize, char**values, size_t vsize) {
+    int i;
+    int sync = true;
+    for (i = 0; i < num_elements; i++) {
+        int idx = i % num_keys;
+        add_entry(ctx, sync, keys[idx], ksize, values[idx], vsize);
+    }
+}
+
+void fillrandom(struct data *ctx, int num_elements, int num_keys, char** keys, size_t ksize, char**values, size_t vsize) {
+    int i;
+    int sync = false;
+    for (i = 0; i < num_elements; i++) {
+        int idx = i % num_keys;
+        add_entry(ctx, sync, keys[idx], ksize, values[idx], vsize);
+    }
+}
+
+void read_random(struct data *ctx, int num_elements, int num_keys, char** keys, size_t ksize) {
+    int i;
+    for (i = 0; i < num_elements; i++) {
+        int idx = i % num_keys;
+        char *value = NULL;
+        size_t vsize;
+        get_value(ctx, keys[idx], ksize, &value, &vsize);
+        if (value) {
+            // printf("%d: key: %s, value: %s\n", i, keys[idx], value);
             free(value);
-            break;
         }
-        case NOT_FOUND:
-            evbuffer_add(output, "NOT_FOUND", 10);
-            break;
     }
 }
 
-void
-errorcb(struct bufferevent *bev, short error, void *ctx)
-{
-    if (error & BEV_EVENT_EOF) {
-        /* connection has been closed, do any clean up here */
-        /* ... */
-    } else if (error & BEV_EVENT_ERROR) {
-        /* check errno to see what error occurred */
-        /* ... */
-    } else if (error & BEV_EVENT_TIMEOUT) {
-        /* must be a timeout event handle, handle it */
-        /* ... */
-    }
-    bufferevent_free(bev);
-}
+int main() {
+    struct data *sync_ctx = new_data();
 
-void
-do_accept(evutil_socket_t listener, short event, void *arg)
-{
-    struct application *ctx = arg;
-    struct sockaddr_storage ss;
-    socklen_t slen = sizeof(ss);
-    int fd = accept(listener, (struct sockaddr*)&ss, &slen);
-    if (fd < 0) {
-        perror("accept");
-    } else if (fd > FD_SETSIZE) {
-        close(fd);
-    } else {
-        struct bufferevent *bev;
-        evutil_make_socket_nonblocking(fd);
-        bev = bufferevent_socket_new(ctx->base, fd, BEV_OPT_CLOSE_ON_FREE);
-        bufferevent_setcb(bev, readcb, NULL, errorcb, ctx);
-        bufferevent_setwatermark(bev, EV_READ, 0, MAX_LINE);
-        bufferevent_enable(bev, EV_READ|EV_WRITE);
-    }
-}
+    /***************** pthread *********************/
+    // pthread_t monitor_thread;
+    // pthread_create(&monitor_thread, NULL, monitor, &mps);
+    /******************************************/
+    int n = 10;
+    size_t size = 16;
+    char **keys = generate_array(n, size);
+    assert(keys != NULL);
+    char **values = generate_array(n, size);
+    assert(values != NULL);
 
-void do_monitor(evutil_socket_t fd, short what, void *arg) {
-    struct application *ctx = arg;
-    if ( ctx->mps ) {
-        fprintf(stdout, "%d\n", ctx->mps);
-    }
-    ctx->mps = 0;
-}
+    int num_sync_element = 10000;
+    int num_elements = 1000000;
 
-void
-run(int port)
-{
-    evutil_socket_t listener;
-    struct sockaddr_in sin;
-    struct event *listener_event;
-    struct event *monitor_event;
-    struct application *ctx = application_new();
+    printf("%-15s: version %d.%d\n", "LevelDB:", leveldb_major_version(), leveldb_minor_version());
+    time_t rawtime;
+    struct tm * timeinfo;
 
-    ctx->mps = 0;
-    ctx->base = event_base_new();
+    time ( &rawtime );
+    timeinfo = localtime ( &rawtime );
+    printf("%-15s: %s", "Date:", asctime (timeinfo));
+    printf("%-15s: %zu bytes each\n", "Keys:", size);
+    printf("%-15s: %zu bytes each\n", "Values:", size);
+    printf("%-15s: %d bytes each\n", "Entries:", num_elements);
+    char cross[51];
+    memset(cross, '-', 50);
+    cross[50] = '\0';
+    printf("%-50s\n", cross);
 
-    if (!ctx->base)
-        return; /*XXXerr*/
+    struct timespec start, end, result;
+    gettime(&start);
 
-    sin.sin_family = AF_INET;
-    sin.sin_addr.s_addr = 0;
-    sin.sin_port = htons(port);
+    open_db(sync_ctx, "/tmp/leveldb_fillsync");
 
-    listener = socket(AF_INET, SOCK_STREAM, 0);
-    evutil_make_socket_nonblocking(listener);
+    fillsync(sync_ctx, num_sync_element, n, keys, size, values, size);
+    gettime(&end);
+    timediff(&result, &end, &start);
+    double latency = (result.tv_sec * 1e9 + result.tv_nsec);
+    printf("%-15s: %12.2f ns/op; (%d ops/s)\n", "fillsync", latency/num_sync_element, (int)(1e9*num_sync_element/latency) );
+    
+    // close db
+    leveldb_close(sync_ctx->db);
 
-#ifndef WIN32
-    {
-        int one = 1;
-        setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
-    }
-#endif
 
-    if (bind(listener, (struct sockaddr*)&sin, sizeof(sin)) < 0) {
-        perror("bind");
-        return;
-    }
+    struct data *cached_ctx = new_data();
+    open_db(cached_ctx, "/tmp/leveldb_fillcached");
 
-    if (listen(listener, 16)<0) {
-        perror("listen");
-        return;
-    }
+    gettime(&start);
+    fillrandom(cached_ctx, num_elements, n, keys, size, values, size);
+    gettime(&end);
+    timediff(&result, &end, &start);
+    latency = (result.tv_sec * 1e9 + result.tv_nsec);
+    printf("%-15s: %12.2f ns/op; (%d ops/s)\n", "fillrandom", latency/num_elements, (int)(1e9*num_elements/latency) );
 
-    listener_event = event_new(ctx->base, listener, EV_READ|EV_PERSIST, do_accept, ctx);
-    event_add(listener_event, NULL);
+    gettime(&start);
+    read_random(cached_ctx, num_elements, n, keys, size);
+    gettime(&end);
+    timediff(&result, &end, &start);
+    latency = (result.tv_sec * 1e9 + result.tv_nsec);
+    printf("%-15s: %12.2f ns/op; (%d ops/s)\n", "readrandom", latency/num_elements, (int)(1e9*num_elements/latency) );
 
-    monitor_event = event_new(ctx->base, -1, EV_TIMEOUT|EV_PERSIST, do_monitor, ctx);
-    struct timeval one_second = {1, 0};
-    event_add(monitor_event, &one_second);
 
-    event_base_priority_init(ctx->base, 2);
-    event_priority_set(monitor_event, 0);
-    event_priority_set(listener_event, 1);
+    leveldb_close(cached_ctx->db);
+    destroy_db(sync_ctx, "/tmp/leveldb_fillsync");
+    destroy_db(cached_ctx, "/tmp/leveldb_fillcached");
 
-    // Comment the line below for valgrind check
-    event_base_dispatch(ctx->base);
-    event_free(listener_event);
-    event_free(monitor_event);
-    application_free(ctx);
-}
 
-int
-main(int argc, char **argv)
-{
-    if (argc < 2) {
-        printf("%s port\n", argv[0]);
-        exit(EXIT_FAILURE);
-    }
-    int port = atoi(argv[1]);
-    setvbuf(stdout, NULL, _IONBF, 0);
-
-    run(port);
-    return EXIT_SUCCESS;
+    // pthread_join(monitor_thread, NULL);
+    free_generated_array(keys, n);
+    free_generated_array(values, n);
+    free_data(sync_ctx);
+    free_data(cached_ctx);
+    
+    return(EXIT_SUCCESS);
 }
