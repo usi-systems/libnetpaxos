@@ -10,8 +10,6 @@ def acceptor(host, path, config, node_id):
     cmd = "ssh {0} {1}/acceptor {2} {3}".format(host, path, config, node_id)
     print cmd
     ssh = subprocess.Popen(shlex.split(cmd),
-                                stdout = subprocess.PIPE,
-                                stderr = subprocess.PIPE,
                                 shell=False)
     return ssh
 
@@ -19,8 +17,6 @@ def coordinator(host, path, config):
     cmd = "ssh {0} {1}/coordinator {2}".format(host, path, config)
     print cmd
     ssh = subprocess.Popen(shlex.split(cmd),
-                                stdout = subprocess.PIPE,
-                                stderr = subprocess.PIPE,
                                 shell=False)
     return ssh
 
@@ -85,7 +81,7 @@ def stop_all(nodes):
     ssh = subprocess.Popen(shlex.split(cmd))
     ssh.wait()
 
-    cmd = "ssh %s pkill client" % nodes[5]
+    cmd = "ssh %s pkill udp_client" % nodes[5]
     print cmd
     ssh = subprocess.Popen(shlex.split(cmd))
     ssh.wait()
