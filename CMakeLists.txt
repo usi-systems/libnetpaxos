@@ -12,7 +12,6 @@ set (EXTRA_LIBS ${EXTRA_LIBS}  ${LIBEVENT_LIBRARIES})
 
 # print message when running cmake
 message(STATUS "This is CMAKE_CXX_FLAGS " ${CMAKE_CXX_FLAGS})
-message(STATUS "Extra libs " ${EXTRA_LIBS})
 
 add_library (Libperf ${SOURCE_FILES})
 target_link_libraries (Libperf ${EXTRA_LIBS})
@@ -21,6 +20,9 @@ target_link_libraries (Libperf ${EXTRA_LIBS})
 include_directories(/usr/local/include/leveldb/include)
 link_directories(/usr/local/lib)
 
+set (EXTRA_LIBS ${EXTRA_LIBS} Libperf leveldb pthread m)
+message(STATUS "Extra libs " ${EXTRA_LIBS})
+
 file( GLOB APP_SOURCES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} app/*.c )
 
 foreach( appfile ${APP_SOURCES} )
@@ -28,6 +30,6 @@ foreach( appfile ${APP_SOURCES} )
     string( REPLACE ".c" "" app ${filename} )
     MESSAGE( ${app} )
     add_executable( ${app} ${appfile} )
-    target_link_libraries( ${app} Libperf leveldb -lm)
+    target_link_libraries( ${app} ${EXTRA_LIBS})
     SET_TARGET_PROPERTIES( ${app} PROPERTIES COMPILE_FLAGS ${CMAKE_CXX_FLAGS})
 endforeach( appfile ${APP_SOURCES} )

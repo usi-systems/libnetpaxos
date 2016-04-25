@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <event2/event.h>
 #include <sys/socket.h>
@@ -22,14 +23,24 @@
 #include "config.h"
 #include "coordinator.h"
 
-#define BUF_SIZE 1500
-
 void propose_value(CoordinatorCtx *ctx, void *arg, int size, struct sockaddr_in client);
 
 CoordinatorCtx *proposer_ctx_new(Config conf) {
     CoordinatorCtx *ctx = malloc(sizeof(CoordinatorCtx));
     ctx->conf = conf;
     ctx->cur_inst = 0;
+    memset(ctx->msgs, 0, sizeof(ctx->msgs));
+    int i;
+    for (i = 0; i < VLEN; i++) {
+        ctx->iovecs[i].iov_base          = ctx->bufs[i];
+        ctx->iovecs[i].iov_len           = BUFSIZE;
+        ctx->msgs[i].msg_hdr.msg_iov     = &ctx->iovecs[i];
+        ctx->msgs[i].msg_hdr.msg_iovlen  = 1;
+        ctx->msgs[i].msg_hdr.msg_name    = &ctx->addrbufs[i];
+        ctx->msgs[i].msg_hdr.msg_namelen = BUFSIZE;
+    }
+    ctx->timeout.tv_sec = TIMEOUT;
+    ctx->timeout.tv_sec = 0;
     return ctx;
 }
 
@@ -37,20 +48,22 @@ CoordinatorCtx *proposer_ctx_new(Config conf) {
 void on_value(evutil_socket_t fd, short what, void *arg)
 {
     CoordinatorCtx *ctx = (CoordinatorCtx *) arg;
-    if (what&EV_READ) {
-        struct sockaddr_in remote;
-        socklen_t remote_len = sizeof(remote);
-        char recvbuf[BUF_SIZE]; 
-        int n = recvfrom(fd, recvbuf, BUF_SIZE, 0, (struct sockaddr *) &remote, &remote_len);
-        if (n < 0) {
-          perror("ERROR in recvfrom");
-          return;
-        }
-        if (ctx->conf.verbose) {
-            printf("on value: %s: %d length, addr_length: %d\n", recvbuf, n, remote_len);
-        }
-        propose_value(ctx, recvbuf, n, remote);
-        memset(recvbuf, 0, BUF_SIZE);
+    int retval = recvmmsg(fd, ctx->msgs, VLEN, 0, &ctx->timeout);
+    if (retval < 0) {
+      perror("recvmmsg()");
+      exit(EXIT_FAILURE);
+    }
+    printf("%d messages received\n", retval);
+    int i;
+    for (i = 0; i < retval; i++) {
+        ctx->bufs[i][ctx->msgs[i].msg_len] = 0;
+        printf("%d %s", i+1, ctx->bufs[i]);
+        struct sockaddr_in *client = ctx->msgs[i].msg_hdr.msg_name;
+        printf("sizeof %d\n", ctx->msgs[i].msg_hdr.msg_namelen);
+
+        printf("received from %s:%d\n", inet_ntoa(client->sin_addr),
+                            ntohs(client->sin_port));
+        propose_value(ctx, ctx->bufs[i], ctx->msgs[i].msg_len, *client);
     }
 }
 

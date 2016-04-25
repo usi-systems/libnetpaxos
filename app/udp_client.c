@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <event2/event.h>
 #include <sys/socket.h>
@@ -22,10 +23,8 @@
 
 #include "application.h"
 
-#define BUF_SIZE 1500
+#define BUFSIZE 200
 #define MSGSIZE 32
-
-void send_message(evutil_socket_t fd, struct sockaddr_in *addr, int idx);
 
 
 struct client_state {
@@ -34,8 +33,16 @@ struct client_state {
     struct timespec send_time;
     struct event_base *base;
     int verbose;
+    int packets_in_buf;
+    char *payload;
+    int payload_sz;
+    int src_port;
+    struct mmsghdr *msgs;
+    struct iovec *iovecs;
     FILE *fp;
 };
+
+void send_message(evutil_socket_t fd, struct client_state *state);
 
 void signal_handler(evutil_socket_t fd, short what, void *arg) {
     struct client_state *state = (struct client_state*) arg;
@@ -62,8 +69,8 @@ void on_response(evutil_socket_t fd, short what, void *arg) {
         state->mps++;
         struct sockaddr_in remote;
         socklen_t remote_len = sizeof(remote);
-        char recvbuf[BUF_SIZE];
-        int n = recvfrom(fd, recvbuf, BUF_SIZE, 0, (struct sockaddr *) &remote, &remote_len);
+        char recvbuf[BUFSIZE];
+        int n = recvfrom(fd, recvbuf, BUFSIZE, 0, (struct sockaddr *) &remote, &remote_len);
         if (n < 0) {
           perror("ERROR in recvfrom");
           return;
@@ -80,52 +87,48 @@ void on_response(evutil_socket_t fd, short what, void *arg) {
             printf("on value: %s: %d length, addr_length: %d\n", recvbuf, n, remote_len);
         }
         // clean receiving buffer
-        memset(recvbuf, 0, BUF_SIZE);
-        send_message(fd, state->proposer, state->mps);
+        memset(recvbuf, 0, BUFSIZE);
+        send_message(fd, state);
         gettime(&state->send_time);
     } else if (what&EV_TIMEOUT) {
         // printf("on timeout, send.\n");
-        send_message(fd, state->proposer, state->mps);
+        send_message(fd, state);
         gettime(&state->send_time);
     }
 }
 
-void send_message(evutil_socket_t fd, struct sockaddr_in *addr, int count) {
-    char msg[MSGSIZE];
-    int n, size;
-    if (count % 2 == 0) {
-        char command = PUT;
-        char key[] = "key";
-        char value[] = "val";
-        msg[0] = command;
-        msg[1] = (unsigned char) strlen(key);
-        msg[2] = (unsigned char) strlen(value);
-        memcpy(&msg[3], key, msg[1]);
-        memcpy(&msg[3+msg[1]], value, msg[2]);
-        size = msg[1] + msg[2] + 4; // 3 for three chars and 1 for terminator
-    } else {
-        char command = GET;
-        char key[] = "key";
-        msg[0] = command;
-        msg[1] = (unsigned char) strlen(key);
-        msg[2] = 1;
-        memcpy(&msg[3], key, msg[1]);
-        size = msg[1] + 4; // 3 for three chars and 1 for terminator
+void send_message(evutil_socket_t fd, struct client_state *state) {
+    int r = sendmmsg(fd, state->msgs, state->packets_in_buf, 0);
+    if (r <= 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+        }
+
+        if (errno == ECONNREFUSED) {
+        }
+        perror("sendmmsg()");
     }
-    msg[size-1] = '\0';
-    socklen_t len = sizeof(struct sockaddr_in);
-    n = sendto(fd, msg, size, 0, (struct sockaddr*) addr, len);
-    if (n < 0) {
-        perror("ERROR in sendto");
-        return;
-    }
-    bzero(msg, MSGSIZE);
 }
 
 struct client_state* client_state_new() {
     struct client_state *state = malloc(sizeof(struct client_state));
     state->base = event_base_new();
+    state->payload = malloc(32);
+    char key[] = "abcde123456789";
+    char value[] = "zxcvbnmasdfghj";
+    state->payload[0] = PUT;
+    char ksize = (unsigned char) strlen(key);
+    char vsize = (unsigned char) strlen(value);
+    state->payload[1] = ksize;
+    state->payload[2] = vsize;
+    memcpy(&state->payload[3], key, ksize);
+    memcpy(&state->payload[ 3 + ksize ], value, vsize);
+
+    state->payload_sz = ksize + vsize + 4; // 3 for three chars and 1 for terminator
+
+    state->packets_in_buf = 1024;
     state->mps = 0;
+    state->msgs = calloc(state->packets_in_buf, sizeof(struct mmsghdr));
+    state->iovecs = calloc(state->packets_in_buf, sizeof(struct iovec));
     return state;
 }
 
@@ -166,7 +169,22 @@ int main(int argc, char* argv[]) {
     proposer->sin_port = htons(conf->proposer_port);
 
     state->proposer = proposer;
+
+   int i;
+    for (i = 0; i < state->packets_in_buf; i++) {
+        state->iovecs[i].iov_base         = (void*)state->payload;
+        state->iovecs[i].iov_len          = state->payload_sz;
+        state->msgs[i].msg_hdr.msg_name    = (void *)state->proposer;
+        state->msgs[i].msg_hdr.msg_namelen = sizeof(struct sockaddr_in);
+        state->msgs[i].msg_hdr.msg_iov    = &state->iovecs[i];
+        state->msgs[i].msg_hdr.msg_iovlen = 1;
+    }
+
+
+
     state->fp = fopen(argv[2], "w+");
+
+
 
     struct event *ev_recv;
     struct timeval period = {1, 0};
