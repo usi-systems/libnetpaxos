@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -6,6 +7,7 @@
 #include <stdio.h>
 #include <unistd.h>
 
+#include "application.h"
 #include "learner.h"
 #include "config.h"
 
@@ -60,13 +62,13 @@ int deliver(const char* request, void *arg, char **return_val, int *return_vsize
     }
     char op = request[0];
     switch(op) {
-        case 'P': {
+        case PUT: {
             unsigned char ksize = request[1];
             unsigned char vsize = request[2];
             add_entry(&state->hashmap, &request[3], ksize, &request[3+ksize], vsize);
             return SUCCESS;
         }
-        case 'G': {
+        case GET: {
             unsigned char ksize = request[1];
             struct kv_entry *entry = find_entry(&state->hashmap, &request[3], ksize);
             if (entry) {
@@ -76,7 +78,7 @@ int deliver(const char* request, void *arg, char **return_val, int *return_vsize
             }
             return NOT_FOUND;
         }
-        case 'D': {
+        case DELETE: {
             unsigned char ksize = request[1];
             struct kv_entry *entry = find_entry(&state->hashmap, &request[3], ksize);
             if (entry) {

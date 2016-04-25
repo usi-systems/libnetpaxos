@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <event2/event.h>
 #include <sys/socket.h>
@@ -46,6 +47,14 @@ LearnerCtx *learner_ctx_new(Config conf) {
     if ( n < 0 || n >= sizeof fname )
         exit(EXIT_FAILURE);
     // ctx->fp = fopen(fname, "w+");
+    for (i = 0; i < VLEN; i++) {
+        ctx->iovecs[i].iov_base          = (void *)&ctx->bufs[i];
+        ctx->iovecs[i].iov_len           = BUFSIZE;
+        ctx->msgs[i].msg_hdr.msg_iov     = &ctx->iovecs[i];
+        ctx->msgs[i].msg_hdr.msg_iovlen  = 1;
+    }
+    ctx->timeout.tv_sec = TIMEOUT;
+    ctx->timeout.tv_sec = 0;
 
     return ctx;
 }
@@ -138,27 +147,33 @@ void handle_accepted(LearnerCtx *ctx, Message *msg, evutil_socket_t fd) {
 void cb_func(evutil_socket_t fd, short what, void *arg)
 {
     LearnerCtx *ctx = (LearnerCtx *) arg;
-    struct sockaddr_in remote;
-    socklen_t remote_len = sizeof(remote);
-    int n;
 
-    Message msg;
-
-    n = recvfrom(fd, &msg, 60, 0, (struct sockaddr *) &remote, &remote_len);
-    if (n < 0) {perror("ERROR in recvfrom"); return; }
-    unpack(&msg);
-    if (ctx->conf.verbose) {
-        printf("Received %d bytes from %s:%d\n", n, inet_ntoa(remote.sin_addr),
-                ntohs(remote.sin_port));
-        print_message(&msg);
+    int retval = recvmmsg(fd, ctx->msgs, VLEN, 0, &ctx->timeout);
+    if (retval < 0) {
+      perror("recvmmsg()");
+      exit(EXIT_FAILURE);
     }
-    if (msg.inst > ctx->conf.maxinst) {
+
+    // printf("received %d messages\n", retval);
+    int i;
+    for (i = 0; i < retval; i++) {
+        ctx->out_bufs[i] = ctx->bufs[i];
+        unpack(&ctx->out_bufs[i]);
         if (ctx->conf.verbose) {
-            fprintf(stderr, "State Overflow\n");
+            // printf("client info %s:%d\n", inet_ntoa(msg.client.sin_addr), ntohs(msg.client.sin_port));
+            // printf("Received %d bytes from %s:%d\n", n, inet_ntoa(remote.sin_addr),
+                    // ntohs(remote.sin_port));
+            print_message(&ctx->out_bufs[i]);
         }
-        return;
+        if (ctx->out_bufs[i].inst > ctx->conf.maxinst) {
+            if (ctx->conf.verbose) {
+                fprintf(stderr, "State Overflow\n");
+            }
+            return;
+        }
+        handle_accepted(ctx, &ctx->out_bufs[i], fd);
     }
-    handle_accepted(ctx, &msg, fd);
+
 }
 
 

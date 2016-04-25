@@ -20,11 +20,10 @@
 #include <errno.h>
 #include "netpaxos_utils.h"
 #include "config.h"
-
 #include "application.h"
+#include "message.h"
 
-#define BUFSIZE 200
-#define MSGSIZE 32
+#define out_MSGSIZE 32
 
 
 struct client_state {
@@ -37,8 +36,12 @@ struct client_state {
     char *payload;
     int payload_sz;
     int src_port;
+    struct mmsghdr *out_msgs;
+    struct iovec *out_iovecs;
     struct mmsghdr *msgs;
     struct iovec *iovecs;
+    char bufs[VLEN][BUFSIZE + 1];
+    struct timespec timeout;
     FILE *fp;
 };
 
@@ -66,14 +69,17 @@ void on_response(evutil_socket_t fd, short what, void *arg) {
     struct client_state *state = (struct client_state*) arg;
     struct timespec recv_time, result;
     if (what&EV_READ) {
-        state->mps++;
-        struct sockaddr_in remote;
-        socklen_t remote_len = sizeof(remote);
-        char recvbuf[BUFSIZE];
-        int n = recvfrom(fd, recvbuf, BUFSIZE, 0, (struct sockaddr *) &remote, &remote_len);
-        if (n < 0) {
-          perror("ERROR in recvfrom");
-          return;
+        int retval = recvmmsg(fd, state->msgs, VLEN, 0, &state->timeout);
+        if (retval < 0) {
+          perror("recvmmsg()");
+          exit(EXIT_FAILURE);
+        }
+        int i;
+        for (i = 0; i < retval; i++) {
+            state->bufs[i][state->msgs[i].msg_len] = 0;
+            if (state->verbose) {
+                printf("%d %s %d\n", i+1, state->bufs[i], state->msgs[i].msg_len);
+            }
         }
         gettime(&recv_time);
         int negative = timediff(&result, &recv_time, &state->send_time);
@@ -83,11 +89,7 @@ void on_response(evutil_socket_t fd, short what, void *arg) {
             double latency = (result.tv_sec + ((double)result.tv_nsec) / 1e9);
             fprintf(state->fp, "%.9f\n", latency);
         }
-        if (state->verbose) {
-            printf("on value: %s: %d length, addr_length: %d\n", recvbuf, n, remote_len);
-        }
         // clean receiving buffer
-        memset(recvbuf, 0, BUFSIZE);
         send_message(fd, state);
         gettime(&state->send_time);
     } else if (what&EV_TIMEOUT) {
@@ -98,7 +100,7 @@ void on_response(evutil_socket_t fd, short what, void *arg) {
 }
 
 void send_message(evutil_socket_t fd, struct client_state *state) {
-    int r = sendmmsg(fd, state->msgs, state->packets_in_buf, 0);
+    int r = sendmmsg(fd, state->out_msgs, state->packets_in_buf, 0);
     if (r <= 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
         }
@@ -107,6 +109,7 @@ void send_message(evutil_socket_t fd, struct client_state *state) {
         }
         perror("sendmmsg()");
     }
+    state->mps += r;
 }
 
 struct client_state* client_state_new() {
@@ -125,10 +128,12 @@ struct client_state* client_state_new() {
 
     state->payload_sz = ksize + vsize + 4; // 3 for three chars and 1 for terminator
 
-    state->packets_in_buf = 1024;
+    state->packets_in_buf = VLEN;
     state->mps = 0;
     state->msgs = calloc(state->packets_in_buf, sizeof(struct mmsghdr));
     state->iovecs = calloc(state->packets_in_buf, sizeof(struct iovec));
+    state->out_msgs = calloc(state->packets_in_buf, sizeof(struct mmsghdr));
+    state->out_iovecs = calloc(state->packets_in_buf, sizeof(struct iovec));
     return state;
 }
 
@@ -169,21 +174,25 @@ int main(int argc, char* argv[]) {
     proposer->sin_port = htons(conf->proposer_port);
 
     state->proposer = proposer;
+    state->timeout.tv_sec = TIMEOUT;
+    state->timeout.tv_sec = 0;
 
    int i;
     for (i = 0; i < state->packets_in_buf; i++) {
-        state->iovecs[i].iov_base         = (void*)state->payload;
-        state->iovecs[i].iov_len          = state->payload_sz;
-        state->msgs[i].msg_hdr.msg_name    = (void *)state->proposer;
-        state->msgs[i].msg_hdr.msg_namelen = sizeof(struct sockaddr_in);
+        state->iovecs[i].iov_base         = (void*)state->bufs[i];
+        state->iovecs[i].iov_len          = BUFSIZE;
         state->msgs[i].msg_hdr.msg_iov    = &state->iovecs[i];
         state->msgs[i].msg_hdr.msg_iovlen = 1;
+
+        state->out_iovecs[i].iov_base         = (void*)state->payload;
+        state->out_iovecs[i].iov_len          = state->payload_sz;
+        state->out_msgs[i].msg_hdr.msg_name    = (void *)state->proposer;
+        state->out_msgs[i].msg_hdr.msg_namelen = sizeof(struct sockaddr_in);
+        state->out_msgs[i].msg_hdr.msg_iov    = &state->out_iovecs[i];
+        state->out_msgs[i].msg_hdr.msg_iovlen = 1;
     }
 
-
-
     state->fp = fopen(argv[2], "w+");
-
 
 
     struct event *ev_recv;

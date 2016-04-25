@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 /* For sockaddr_in */
 #include <netinet/in.h>
 /* For socket functions */

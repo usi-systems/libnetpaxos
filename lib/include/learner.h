@@ -1,5 +1,6 @@
 #ifndef _LEARNER_H
 #define _LEARNER_H
+#define _GNU_SOURCE
 #include <sys/types.h>
 #include <event2/event.h>
 #include "config.h"
@@ -32,6 +33,13 @@ typedef struct LearnerCtx {
     FILE *fp;
     int (*deliver)(const char* req, void* arg, char **value, int *vsize);
     void *app;
+    struct mmsghdr msgs[VLEN];
+    struct iovec iovecs[VLEN];
+    Message bufs[VLEN];
+    struct mmsghdr out_msgs[VLEN];
+    struct iovec out_iovecs[VLEN];
+    Message out_bufs[VLEN];
+    struct timespec timeout;
 } LearnerCtx;
 
 int start_learner(Config *conf, int (*deliver_cb)(const char* req, void* arg, char **value, int *vsize), void* arg);

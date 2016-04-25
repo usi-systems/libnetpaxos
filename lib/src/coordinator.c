@@ -29,6 +29,7 @@ CoordinatorCtx *proposer_ctx_new(Config conf) {
     CoordinatorCtx *ctx = malloc(sizeof(CoordinatorCtx));
     ctx->conf = conf;
     ctx->cur_inst = 0;
+    ctx->packets_in_buf = VLEN;
     memset(ctx->msgs, 0, sizeof(ctx->msgs));
     int i;
     for (i = 0; i < VLEN; i++) {
@@ -41,9 +42,23 @@ CoordinatorCtx *proposer_ctx_new(Config conf) {
     }
     ctx->timeout.tv_sec = TIMEOUT;
     ctx->timeout.tv_sec = 0;
+
     return ctx;
 }
 
+void init_out_msgs(CoordinatorCtx *ctx) {
+    int i;
+    ctx->out_msgs = calloc(ctx->packets_in_buf, sizeof(struct mmsghdr));
+    ctx->out_iovecs = calloc(ctx->packets_in_buf, sizeof(struct iovec));
+    for (i = 0; i < ctx->packets_in_buf; i++) {
+        // ctx->out_iovecs[i].iov_base         = (void*)ctx->payload;
+        // ctx->out_iovecs[i].iov_len          = ctx->payload_sz;
+        ctx->out_msgs[i].msg_hdr.msg_name    = (void *)ctx->acceptor_addr;
+        ctx->out_msgs[i].msg_hdr.msg_namelen = sizeof(struct sockaddr_in);
+        ctx->out_msgs[i].msg_hdr.msg_iov    = &ctx->out_iovecs[i];
+        ctx->out_msgs[i].msg_hdr.msg_iovlen = 1;
+    }
+}
 
 void on_value(evutil_socket_t fd, short what, void *arg)
 {
@@ -53,50 +68,38 @@ void on_value(evutil_socket_t fd, short what, void *arg)
       perror("recvmmsg()");
       exit(EXIT_FAILURE);
     }
-    printf("%d messages received\n", retval);
     int i;
     for (i = 0; i < retval; i++) {
         ctx->bufs[i][ctx->msgs[i].msg_len] = 0;
-        printf("%d %s", i+1, ctx->bufs[i]);
         struct sockaddr_in *client = ctx->msgs[i].msg_hdr.msg_name;
-        printf("sizeof %d\n", ctx->msgs[i].msg_hdr.msg_namelen);
+        // printf("received from %s:%d\n", inet_ntoa(client->sin_addr), ntohs(client->sin_port));
 
-        printf("received from %s:%d\n", inet_ntoa(client->sin_addr),
-                            ntohs(client->sin_port));
-        propose_value(ctx, ctx->bufs[i], ctx->msgs[i].msg_len, *client);
+        /* */
+        if (ctx->cur_inst >= ctx->conf.maxinst)
+            ctx->cur_inst = 0;
+        
+        initialize_message(&ctx->out_bufs[i], phase2a);
+        memcpy(&ctx->out_bufs[i].paxosval, ctx->bufs[i], ctx->msgs[i].msg_len - 1);
+        ctx->out_bufs[i].inst = ctx->cur_inst++;
+        ctx->out_bufs[i].client = *client;
+        if(ctx->conf.verbose)
+            print_message(&ctx->out_bufs[i]);
+        pack(&ctx->out_bufs[i]);
+        ctx->out_iovecs[i].iov_base         = (void*)&ctx->out_bufs[i];
+        ctx->out_iovecs[i].iov_len          = sizeof(Message);
     }
+    int r = sendmmsg(fd, ctx->out_msgs, retval, 0);
+    if (r <= 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+        }
+
+        if (errno == ECONNREFUSED) {
+        }
+        perror("sendmmsg()");
+     }
 }
 
 
-void propose_value(CoordinatorCtx *ctx, void *arg, int size, struct sockaddr_in client)
-{
-    char *v = arg;
-    socklen_t serverlen = sizeof(*ctx->acceptor_addr);
-    Message msg;
-    initialize_message(&msg, phase2a);
-    msg.client = client;
-    if (ctx->cur_inst >= ctx->conf.maxinst) {
-        return;
-    }
-    msg.inst = ctx->cur_inst;
-
-    int maxlen = ( size < PAXOS_VALUE_SIZE ? size : PAXOS_VALUE_SIZE - 1);
-    strncpy(msg.paxosval, v, maxlen);
-
-    pack(&msg);
-
-    int n = sendto(ctx->sock, &msg, sizeof(Message), 0, (struct sockaddr*) ctx->acceptor_addr, serverlen);
-    if (n < 0) {
-        perror("ERROR in sendto");
-        return;
-    }
-    if (ctx->conf.verbose) {
-        printf("Send %d bytes to %s:%d\n", n, inet_ntoa(ctx->acceptor_addr->sin_addr),
-                            ntohs(ctx->acceptor_addr->sin_port));
-    }
-
-    ctx->cur_inst++;
-}
 
 int start_coordinator(Config *conf) {
     CoordinatorCtx *ctx = proposer_ctx_new(*conf);
@@ -125,6 +128,8 @@ int start_coordinator(Config *conf) {
     bcopy((char *)server->h_addr,
       (char *)&(ctx->acceptor_addr->sin_addr.s_addr), server->h_length);
     ctx->acceptor_addr->sin_port = htons(conf->acceptor_port);
+
+    init_out_msgs(ctx);
 
     struct event *ev_recv;
     int listen_socket = create_server_socket(conf->proposer_port);

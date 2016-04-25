@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <event2/event.h>
 #include <sys/socket.h>
@@ -25,6 +26,8 @@ AcceptorCtx *acceptor_ctx_new(Config conf, int acceptor_id) {
     AcceptorCtx *ctx = malloc(sizeof(AcceptorCtx));
     ctx->conf = conf;
     ctx->acceptor_id = acceptor_id;
+    ctx->packets_in_buf = VLEN;
+    ctx->count_accepted = 0;
     ctx->states = calloc(ctx->conf.maxinst, sizeof(a_state));
     int i;
     for (i = 0; i < ctx->conf.maxinst; i++) {
@@ -39,9 +42,18 @@ AcceptorCtx *acceptor_ctx_new(Config conf, int acceptor_id) {
     if ( n < 0 || n >= sizeof fname )
         exit(EXIT_FAILURE);
     // ctx->fp = fopen(fname, "w+");
-
+    memset(ctx->msgs, 0, sizeof(ctx->msgs));
+    for (i = 0; i < VLEN; i++) {
+        ctx->iovecs[i].iov_base          = (void *)&ctx->bufs[i];
+        ctx->iovecs[i].iov_len           = BUFSIZE;
+        ctx->msgs[i].msg_hdr.msg_iov     = &ctx->iovecs[i];
+        ctx->msgs[i].msg_hdr.msg_iovlen  = 1;
+    }
+    ctx->timeout.tv_sec = TIMEOUT;
+    ctx->timeout.tv_sec = 0;
     return ctx;
 }
+
 
 void acceptor_ctx_destroy(AcceptorCtx *ctx) {
     int i;
@@ -99,43 +111,51 @@ int handle_phase2a(AcceptorCtx *ctx, Message *msg) {
 void cb_func(evutil_socket_t fd, short what, void *arg)
 {
     AcceptorCtx *ctx = (AcceptorCtx *) arg;
-    struct sockaddr_in remote;
-    socklen_t remote_len = sizeof(remote);
-    Message msg;
-    int n = 0, res = 0;
-
-    n = recvfrom(fd, &msg, sizeof(Message), 0, (struct sockaddr *) &remote, &remote_len);
-    if (n < 0) {perror("ERROR in recvfrom"); return; }
-    unpack(&msg);
-    if (ctx->conf.verbose) {
-        printf("Received %d bytes from %s:%d\n", n, inet_ntoa(remote.sin_addr),
-                ntohs(remote.sin_port));
-        print_message(&msg);
+    int retval = recvmmsg(fd, ctx->msgs, VLEN, 0, &ctx->timeout);
+    if (retval < 0) {
+      perror("recvmmsg()");
+      exit(EXIT_FAILURE);
     }
-    if (msg.inst > ctx->conf.maxinst) {
+    int i;
+    for (i = 0; i < retval; i++) {
+        ctx->out_bufs[i] = ctx->bufs[i];
+        unpack(&ctx->out_bufs[i]);
         if (ctx->conf.verbose) {
-            fprintf(stderr, "State Overflow\n");
+            print_message(&ctx->out_bufs[i]);
         }
-        return;
-    }
-
-    if (msg.msgtype == phase1a) {
-        res = handle_phase1a(ctx, &msg);
-    }
-    else if (msg.msgtype == phase2a) {
-        res = handle_phase2a(ctx, &msg);
-    }
-
-    if (res) {
-        pack(&msg);
-        // send to learners
-        socklen_t addr_len = sizeof(*ctx->learner_addr);
-        n = sendto(fd, &msg, sizeof(Message), 0, (struct sockaddr*) ctx->learner_addr, addr_len);
-        if (n < 0) {
-            perror("ERROR in sendto");
+        if (ctx->out_bufs[i].inst > ctx->conf.maxinst) {
+            if (ctx->conf.verbose) {
+                fprintf(stderr, "State Overflow\n");
+            }
             return;
         }
+        int res;
+        if (ctx->out_bufs[i].msgtype == phase1a) {
+            res = handle_phase1a(ctx, &ctx->out_bufs[i]);
+        }
+        else if (ctx->out_bufs[i].msgtype == phase2a) {
+            res = handle_phase2a(ctx, &ctx->out_bufs[i]);
+        }
+
+        if (res) {
+            pack(&ctx->out_bufs[i]);
+            ctx->out_iovecs[ctx->count_accepted].iov_base         = (void*)&ctx->out_bufs[ctx->count_accepted];
+            ctx->out_iovecs[ctx->count_accepted].iov_len          = sizeof(Message);
+            ctx->out_msgs[ctx->count_accepted].msg_hdr.msg_name    = (void *)ctx->learner_addr;
+            ctx->out_msgs[ctx->count_accepted].msg_hdr.msg_namelen = sizeof(struct sockaddr_in);
+            ctx->out_msgs[ctx->count_accepted].msg_hdr.msg_iov    = &ctx->out_iovecs[ctx->count_accepted];
+            ctx->out_msgs[ctx->count_accepted].msg_hdr.msg_iovlen = 1; 
+            ctx->count_accepted++;
+        }
+
     }
+
+    int r = sendmmsg(fd, ctx->out_msgs, ctx->count_accepted, 0);
+    if (r < 0) {
+        perror("sendmmsg()");
+        exit(EXIT_FAILURE);
+    }
+    ctx->count_accepted = 0;
 }
 
 
