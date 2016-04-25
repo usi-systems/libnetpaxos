@@ -1,5 +1,8 @@
 #include <event2/event.h>
 #include <event2/bufferevent.h>
+#include <event2/buffer.h>
+#include <event2/util.h>
+#include <event2/dns.h>
 #include <sys/socket.h>
 #include <string.h>
 #include <stdio.h>
@@ -134,6 +137,7 @@ struct info *info_new() {
     inf->num_elements = 1;
     // Initialize to 10 elements
     inf->msg = calloc(inf->num_elements, sizeof(char));
+    return inf;
 }
 
 void info_free(struct info *inf) {

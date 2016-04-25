@@ -7,6 +7,7 @@
 
 int deliver(const char* request, void *arg, char** return_val, int *return_vsize) {
     printf("delivered %s\n", request);
+    return 0;
 }
 
 int main(int argc, char* argv[]) {

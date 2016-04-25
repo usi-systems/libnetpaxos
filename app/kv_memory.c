@@ -58,7 +58,6 @@ int deliver(const char* request, void *arg, char **return_val, int *return_vsize
     if (!request || request[0] == '\0') {
         return FAILED;
     }
-    size_t read_len;
     char op = request[0];
     switch(op) {
         case 'P': {

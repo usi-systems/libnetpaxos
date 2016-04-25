@@ -94,10 +94,6 @@ int deliver(const char* request, void *arg, char **return_val, int *return_vsize
 
 
 int main(int argc, char* argv[]) {
-    char *err = NULL;
-    char *read;
-    size_t read_len;
-
     struct application *state = application_new();
     if (argc != 3) {
         printf("%s config-file node_id\n", argv[0]);

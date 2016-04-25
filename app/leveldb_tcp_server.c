@@ -128,7 +128,7 @@ readcb(struct bufferevent *bev, void *arg)
     input = bufferevent_get_input(bev);
     output = bufferevent_get_output(bev);
 
-    int n = evbuffer_remove(input, request, sizeof(request));
+    evbuffer_remove(input, request, sizeof(request));
     // printf("received: %s, size: %d\n", request, n);
     char *value;
     int vsize;

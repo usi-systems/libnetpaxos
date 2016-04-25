@@ -5,6 +5,7 @@
 #include <pthread.h>
 #include <assert.h>
 #include <time.h>
+#include <unistd.h>
 #include "netpaxos_utils.h"
 
 pthread_mutex_t mutexmps;
@@ -76,15 +77,14 @@ int delete_entry(struct data *ctx, char *key, int ksize) {
 }
 
 struct data *new_data() {
-    char *err = NULL;
     struct data *ctx = malloc(sizeof(struct data));
     ctx->woptions = leveldb_writeoptions_create();
     ctx->roptions = leveldb_readoptions_create();
     ctx->mps = 0;
+    return ctx;
 }
 
 void free_data(struct data *ctx) {
-    char *err = NULL;
     leveldb_writeoptions_destroy(ctx->woptions);
     leveldb_readoptions_destroy(ctx->roptions);
     leveldb_options_destroy(ctx->options);
