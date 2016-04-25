@@ -29,37 +29,15 @@ void monitor(evutil_socket_t fd, short what, void *arg) {
 
 void submit(struct bufferevent *bev, char* req) {
     char msg[BUFSIZE];
-    char* replica = strdup(req);
-    char* token = strtok(replica, " ");
     int size;
-    if (strcmp(token, "PUT") == 0) {
-        char *key = strtok(NULL, " ");
-        char *value = strtok(NULL, " ");
-        msg[0] = PUT;
-        msg[1] = (unsigned char) strlen(key);
-        msg[2] = (unsigned char) strlen(value);
-        memcpy(&msg[3], key, msg[1]);
-        memcpy(&msg[3+msg[1]], value, msg[2]);
-        size = msg[1] + msg[2] + 4; // 3 for three chars and 1 for terminator
-    }
-    else if (strcmp(token, "GET") == 0) {
-        char *key = strtok(NULL, " ");
-        msg[0] = GET;
-        msg[1] = (unsigned char) strlen(key);
-        msg[2] = 1;
-        memcpy(&msg[3], key, msg[1]);
-        size = msg[1] + 4; // 3 for three chars and 1 for terminator
-    }
-    else if (strcmp(token, "DEL") == 0) {
-        char *key = strtok(NULL, " ");
-        msg[0] = DELETE;
-        msg[1] = (unsigned char) strlen(key);
-        msg[2] = 1;
-        memcpy(&msg[3], key, msg[1]);
-        size = msg[1] + 4; // 3 for three chars and 1 for terminator
-    }
+    char key[] = "abcde123456789";
+    msg[0] = PUT;
+    msg[1] = (unsigned char) 14;
+    msg[2] = (unsigned char) 14;
+    memcpy(&msg[3], key, msg[1]);
+    memcpy(&msg[3+msg[1]], key, msg[2]);
+    size = msg[1] + msg[2] + 4; // 3 for three chars and 1 for terminator
     bufferevent_write(bev, msg, size);
-    free(replica);
     bzero(msg, BUFSIZE);
 }
 
@@ -93,7 +71,7 @@ void readcb(struct bufferevent *bev, void *ptr)
         // printf("%s\n", buf);
     }
     inf->mps++;
-    int idx = inf->mps % inf->count;
+    int idx = 0;
     submit(bev, inf->msg[idx]);
     clock_gettime(CLOCK_REALTIME, &inf->start);
     bzero(buf, BUFSIZE);
@@ -153,7 +131,7 @@ void read_input(struct info *inf, char* workload) {
 struct info *info_new() {
     struct info *inf = malloc(sizeof(struct info));
     inf->mps = 0;
-    inf->num_elements = 10;
+    inf->num_elements = 1;
     // Initialize to 10 elements
     inf->msg = calloc(inf->num_elements, sizeof(char));
 }
@@ -200,7 +178,7 @@ int main(int argc, char* argv[])
     struct timeval one_second = {1, 0};
     event_add(ev_monitor, &one_second);
 
-    read_input(inf, argv[3]);
+    // read_input(inf, argv[3]);
     inf->fp = fopen(argv[4], "w+");
 
     event_base_dispatch(inf->base);
