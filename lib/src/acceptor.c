@@ -80,6 +80,7 @@ void acceptor_ctx_destroy(AcceptorCtx *ctx) {
 void signal_handler(evutil_socket_t fd, short what, void *arg) {
     AcceptorCtx *ctx = (AcceptorCtx *) arg;
     if (what&EV_SIGNAL) {
+        printf("Stop acceptor\n");
         event_base_loopbreak(ctx->base);
         // int i;
         // for (i = 0; i < ctx->conf.maxinst; i++) {
@@ -198,13 +199,19 @@ int start_acceptor(Config *conf, int acceptor_id) {
     ev_recv = event_new(ctx->base, ctx->sock, EV_READ|EV_PERSIST, on_value, ctx);
     event_add(ev_recv, NULL);
 
-    struct event *evsig;
-    evsig = evsignal_new(ctx->base, SIGTERM, signal_handler, ctx);
-    event_add(evsig, NULL);
+    struct event *evs_igterm;
+    evs_igterm = evsignal_new(ctx->base, SIGTERM, signal_handler, ctx);
+    event_add(evs_igterm, NULL);
+
+    struct event *ev_sigint;
+    ev_sigint = evsignal_new(ctx->base, SIGINT, signal_handler, ctx);
+    event_add(ev_sigint, NULL);
+
 
     // Comment the line below for valgrind check
     event_base_dispatch(ctx->base);
-    event_free(evsig);
+    event_free(evs_igterm);
+    event_free(ev_sigint);
     acceptor_ctx_destroy(ctx);
 
     return EXIT_SUCCESS;

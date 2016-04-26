@@ -85,6 +85,7 @@ void init_out_msgs(CoordinatorCtx *ctx) {
 void signal_handler(evutil_socket_t fd, short what, void *arg) {
     CoordinatorCtx *ctx = arg;
     if (what&EV_SIGNAL) {
+        printf("Stop Coordinator\n");
         event_base_loopbreak(ctx->base);
     }
 }
@@ -162,13 +163,18 @@ int start_coordinator(Config *conf) {
     ev_recv = event_new(ctx->base, ctx->sock, EV_READ|EV_PERSIST, on_value, ctx);
     event_add(ev_recv, NULL);
 
-    struct event *evsig;
-    evsig = evsignal_new(ctx->base, SIGTERM, signal_handler, ctx);
-    event_add(evsig, NULL);
+    struct event *ev_sigterm;
+    ev_sigterm = evsignal_new(ctx->base, SIGTERM, signal_handler, ctx);
+    event_add(ev_sigterm, NULL);
+
+    struct event *ev_sigint;
+    ev_sigint = evsignal_new(ctx->base, SIGINT, signal_handler, ctx);
+    event_add(ev_sigint, NULL);
 
     event_base_dispatch(ctx->base);
     event_free(ev_recv);
-    event_free(evsig);
+    event_free(ev_sigterm);
+    event_free(ev_sigint);
     coordinator_free(ctx);
 
     close(listen_socket);

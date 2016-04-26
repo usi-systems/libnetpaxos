@@ -217,18 +217,23 @@ int main(int argc, char* argv[]) {
     ev_recv = event_new(state->base, state->sock, EV_READ|EV_PERSIST, on_response, state);
     struct event *ev_monitor;
     ev_monitor = event_new(state->base, -1, EV_TIMEOUT|EV_PERSIST, monitor, state);
+    struct event *ev_sigterm;
+    ev_sigterm = evsignal_new(state->base, SIGTERM, signal_handler, state);
     struct event *ev_sigint;
-    ev_sigint = evsignal_new(state->base, SIGTERM, signal_handler, state);
+    ev_sigint = evsignal_new(state->base, SIGINT, signal_handler, state);
 
+
+    event_add(ev_sigint, NULL);
     event_add(ev_recv, &period);
     event_add(ev_monitor, &period);
-    event_add(ev_sigint, NULL);
+    event_add(ev_sigterm, NULL);
 
     event_base_dispatch(state->base);
     free(conf);
     event_free(ev_recv);
     event_free(ev_monitor);
     event_free(ev_sigint);
+    event_free(ev_sigterm);
     client_state_free(state);
     close(sock);
     return EXIT_SUCCESS;

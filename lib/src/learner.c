@@ -94,6 +94,7 @@ void learner_ctx_destroy(LearnerCtx *ctx) {
 void signal_handler(evutil_socket_t fd, short what, void *arg) {
     LearnerCtx *ctx = (LearnerCtx *) arg;
     if (what&EV_SIGNAL) {
+        printf("Stop learner\n");
         event_base_loopbreak(ctx->base);
         // disable for now
         // int i;
@@ -246,22 +247,27 @@ int start_learner(Config *conf, int (*deliver_cb)(const char* req, void* arg, ch
     recv_ev = event_new(ctx->base, ctx->sock, EV_READ|EV_PERSIST, on_value, ctx);
     struct event *monitor_ev;
     monitor_ev = event_new(ctx->base, -1, EV_TIMEOUT|EV_PERSIST, monitor, ctx);
-    struct event *evsig;
-    evsig = evsignal_new(ctx->base, SIGTERM, signal_handler, ctx);
+    struct event *ev_sigterm;
+    ev_sigterm = evsignal_new(ctx->base, SIGTERM, signal_handler, ctx);
 
     event_base_priority_init(ctx->base, 4);
-    event_priority_set(evsig, 0);
+    event_priority_set(ev_sigterm, 0);
     event_priority_set(monitor_ev, 1);
+
+    struct event *ev_sigint;
+    ev_sigint = evsignal_new(ctx->base, SIGINT, signal_handler, ctx);
+    event_add(ev_sigint, NULL);
     
     event_add(recv_ev, NULL);
     event_add(monitor_ev, &timeout);
-    event_add(evsig, NULL);
+    event_add(ev_sigterm, NULL);
 
     // Comment the line below for valgrind check
     event_base_dispatch(ctx->base);
     event_free(recv_ev);
     event_free(monitor_ev);
-    event_free(evsig);
+    event_free(ev_sigterm);
+    event_free(ev_sigint);
 
     learner_ctx_destroy(ctx);
    
