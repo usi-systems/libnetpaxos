@@ -20,7 +20,7 @@ target_link_libraries (Libperf ${EXTRA_LIBS})
 include_directories(/usr/local/include/leveldb/include)
 link_directories(/usr/local/lib)
 
-set (EXTRA_LIBS ${EXTRA_LIBS} Libperf leveldb pthread m)
+set (EXTRA_LIBS ${EXTRA_LIBS} Libperf leveldb m)
 message(STATUS "Extra libs " ${EXTRA_LIBS})
 
 file( GLOB APP_SOURCES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} app/*.c )

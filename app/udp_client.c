@@ -18,7 +18,6 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <errno.h>
-#include <pthread.h>
 #include "netpaxos_utils.h"
 #include "config.h"
 #include "application.h"
@@ -35,25 +34,20 @@ struct client_state {
     char *payload;
     int payload_sz;
     int src_port;
-    int running;
     struct mmsghdr *out_msgs;
     struct iovec *out_iovecs;
     struct mmsghdr *msgs;
     struct iovec *iovecs;
     char **bufs;
-    struct timespec timeout;
     FILE *fp;
-    pthread_t recv_th;
 };
 
-void send_message(struct client_state *state);
+void send_message(struct client_state *state, int amount);
 
 void signal_handler(evutil_socket_t fd, short what, void *arg) {
     struct client_state *state = (struct client_state*) arg;
     if (what&EV_SIGNAL) {
-        state->running = 0;
         event_base_loopbreak(state->base);
-        pthread_cancel(state->recv_th);
         printf("Stop client\n");
     }
 }
@@ -68,11 +62,11 @@ void monitor(evutil_socket_t fd, short what, void *arg) {
 }
 
 
-void *thread_loop(void *arg) {
+void on_response(evutil_socket_t fd, short what, void *arg) {
     struct client_state *state = arg;
     struct timespec recv_time, result;
-    while(state->running) {
-        int retval = recvmmsg(state->sock, state->msgs, state->vlen, 0, NULL);
+    if (what&EV_READ) {
+        int retval = recvmmsg(state->sock, state->msgs, state->vlen, MSG_WAITFORONE, NULL);
         if (retval < 0) {
           perror("recvmmsg()");
           exit(EXIT_FAILURE);
@@ -96,34 +90,32 @@ void *thread_loop(void *arg) {
             fprintf(state->fp, "%.9f\n", latency);
         }
         // clean receiving buffer
-        send_message(state);
+        send_message(state, retval);
         gettime(&state->send_time);
+    } if (what&EV_TIMEOUT) {
+        send_message(state, state->vlen);
     }
-    return NULL;
 }
 
-void send_message(struct client_state *state) {
-    if (state->running) {
-        int r = sendmmsg(state->sock, state->out_msgs, state->vlen, 0);
-        if (r <= 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
-            }
-
-            if (errno == ECONNREFUSED) {
-            }
-            perror("sendmmsg()");
+void send_message(struct client_state *state, int amount) {
+    int r = sendmmsg(state->sock, state->out_msgs, amount, 0);
+    if (r <= 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
         }
-        if (state->verbose) {
-            printf("Send %d messages\n", r);
+        if (errno == ECONNREFUSED) {
         }
+        perror("sendmmsg()");
+    }
+    if (state->verbose) {
+        printf("Send %d messages\n", r);
     }
 }
 
 struct client_state* client_state_new(Config *conf) {
     struct client_state *state = malloc(sizeof(struct client_state));
     state->base = event_base_new();
-    state->running = 1;
     state->payload = malloc(32);
+    bzero(state->payload, 32);
     char key[] = "abcde123456789";
     char value[] = "zxcvbnmasdfghj";
     state->payload[0] = PUT;
@@ -200,8 +192,6 @@ int main(int argc, char* argv[]) {
     proposer->sin_port = htons(conf->proposer_port);
 
     state->proposer = proposer;
-    state->timeout.tv_sec = TIMEOUT;
-    state->timeout.tv_sec = 0;
 
    int i;
     for (i = 0; i < state->vlen; i++) {
@@ -220,32 +210,27 @@ int main(int argc, char* argv[]) {
 
     state->fp = fopen(argv[2], "w+");
 
-    if(pthread_create(&state->recv_th, NULL, thread_loop, state)) {
-        fprintf(stderr, "Error creating thread\n");
-        exit(EXIT_FAILURE);
-    }
-    send_message(state);
+    send_message(state, state->vlen);
 
     struct timeval period = {1, 0};
+    struct event *ev_recv;
+    ev_recv = event_new(state->base, state->sock, EV_READ|EV_PERSIST, on_response, state);
     struct event *ev_monitor;
     ev_monitor = event_new(state->base, -1, EV_TIMEOUT|EV_PERSIST, monitor, state);
     struct event *ev_sigint;
     ev_sigint = evsignal_new(state->base, SIGTERM, signal_handler, state);
 
+    event_add(ev_recv, &period);
     event_add(ev_monitor, &period);
     event_add(ev_sigint, NULL);
 
     event_base_dispatch(state->base);
     free(conf);
+    event_free(ev_recv);
     event_free(ev_monitor);
     event_free(ev_sigint);
     client_state_free(state);
     close(sock);
-
-    if(pthread_join(state->recv_th, NULL)) {
-        fprintf(stderr, "Error joining thread\n");
-        exit(EXIT_FAILURE);
-    }
     return EXIT_SUCCESS;
 }
 

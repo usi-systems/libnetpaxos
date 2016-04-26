@@ -12,7 +12,6 @@
 #include <signal.h>
 #include <math.h>
 #include <stdlib.h>
-#include <pthread.h>
 #include "message.h"
 #include "acceptor.h"
 #include "netpaxos_utils.h"
@@ -55,8 +54,6 @@ AcceptorCtx *acceptor_ctx_new(Config conf, int acceptor_id) {
         ctx->msgs[i].msg_hdr.msg_iov     = &ctx->iovecs[i];
         ctx->msgs[i].msg_hdr.msg_iovlen  = 1;
     }
-    ctx->timeout.tv_sec = TIMEOUT;
-    ctx->timeout.tv_sec = 0;
     return ctx;
 }
 
@@ -84,7 +81,6 @@ void signal_handler(evutil_socket_t fd, short what, void *arg) {
     AcceptorCtx *ctx = (AcceptorCtx *) arg;
     if (what&EV_SIGNAL) {
         event_base_loopbreak(ctx->base);
-        pthread_cancel(ctx->recv_th);
         // int i;
         // for (i = 0; i < ctx->conf.maxinst; i++) {
         //     fprintf(ctx->fp, "%s\n", ctx->states[i]->paxosval);
@@ -120,16 +116,14 @@ int handle_phase2a(AcceptorCtx *ctx, Message *msg) {
     return 0;
 }
 
-void *on_value(void *arg)
-{
+void on_value(evutil_socket_t fd, short what, void *arg) {
     AcceptorCtx *ctx = (AcceptorCtx *) arg;
-    while(1) {
-        int retval = recvmmsg(ctx->sock, ctx->msgs, ctx->conf.vlen, 0, NULL);
-        if (retval < 0) {
-          perror("recvmmsg()");
-          exit(EXIT_FAILURE);
-        }
-
+    int retval = recvmmsg(ctx->sock, ctx->msgs, ctx->conf.vlen, MSG_WAITFORONE, NULL);
+    if (retval < 0) {
+      perror("recvmmsg()");
+      exit(EXIT_FAILURE);
+    }
+    else if (retval > 0) {
         int i;
         for (i = 0; i < retval; i++) {
             ctx->out_bufs[i] = ctx->bufs[i];
@@ -162,9 +156,9 @@ void *on_value(void *arg)
                 ctx->out_msgs[ctx->count_accepted].msg_hdr.msg_iovlen = 1; 
                 ctx->count_accepted++;
             }
-
         }
-
+    }
+    if (ctx->count_accepted > 0) {
         int r = sendmmsg(ctx->sock, ctx->out_msgs, ctx->count_accepted, 0);
         if (r < 0) {
             perror("sendmmsg()");
@@ -200,10 +194,9 @@ int start_acceptor(Config *conf, int acceptor_id) {
       (char *)&(ctx->learner_addr->sin_addr.s_addr), learner->h_length);
     ctx->learner_addr->sin_port = htons(conf->learner_port);
 
-    if(pthread_create(&ctx->recv_th, NULL, on_value, ctx)) {
-        fprintf(stderr, "Error creating thread\n");
-        exit(EXIT_FAILURE);
-    }
+    struct event *ev_recv;
+    ev_recv = event_new(ctx->base, ctx->sock, EV_READ|EV_PERSIST, on_value, ctx);
+    event_add(ev_recv, NULL);
 
     struct event *evsig;
     evsig = evsignal_new(ctx->base, SIGTERM, signal_handler, ctx);
@@ -212,12 +205,6 @@ int start_acceptor(Config *conf, int acceptor_id) {
     // Comment the line below for valgrind check
     event_base_dispatch(ctx->base);
     event_free(evsig);
-
-    if(pthread_join(ctx->recv_th, NULL)) {
-        fprintf(stderr, "Error joining thread\n");
-        exit(EXIT_FAILURE);
-    }
-
     acceptor_ctx_destroy(ctx);
 
     return EXIT_SUCCESS;

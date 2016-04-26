@@ -3,7 +3,6 @@
 #define _GNU_SOURCE
 #include <sys/types.h>
 #include <event2/event.h>
-#include <pthread.h>
 #include "config.h"
 #include "message.h"
 
@@ -43,8 +42,6 @@ typedef struct LearnerCtx {
     struct iovec *out_iovecs;
     Message *out_bufs;
     char **res_bufs;
-    struct timespec timeout;
-    pthread_t recv_th;
 } LearnerCtx;
 
 int start_learner(Config *conf, int (*deliver_cb)(const char* req, void* arg, char **value, int *vsize), void* arg);

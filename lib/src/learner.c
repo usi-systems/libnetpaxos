@@ -13,7 +13,6 @@
 #include <math.h>
 #include <errno.h>
 #include <stdlib.h>
-#include <pthread.h>
 #include "message.h"
 #include "learner.h"
 #include "netpaxos_utils.h"
@@ -66,9 +65,6 @@ LearnerCtx *learner_ctx_new(Config conf) {
         ctx->msgs[i].msg_hdr.msg_iov     = &ctx->iovecs[i];
         ctx->msgs[i].msg_hdr.msg_iovlen  = 1;
     }
-    ctx->timeout.tv_sec = TIMEOUT;
-    ctx->timeout.tv_sec = 0;
-
     return ctx;
 }
 
@@ -99,7 +95,6 @@ void signal_handler(evutil_socket_t fd, short what, void *arg) {
     LearnerCtx *ctx = (LearnerCtx *) arg;
     if (what&EV_SIGNAL) {
         event_base_loopbreak(ctx->base);
-        pthread_cancel(ctx->recv_th);
         // disable for now
         // int i;
         // for (i = 0; i < ctx->conf.maxinst; i++) {
@@ -189,16 +184,16 @@ void handle_accepted(LearnerCtx *ctx, Message *msg, evutil_socket_t fd) {
     }
 }
 
-void *cb_func(void *arg)
+
+void on_value(evutil_socket_t fd, short what, void *arg)
 {
     LearnerCtx *ctx = arg;
-    while(1) {
-        int retval = recvmmsg(ctx->sock, ctx->msgs, ctx->conf.vlen, 0, NULL);
-        if (retval < 0) {
-          perror("recvmmsg()");
-          exit(EXIT_FAILURE);
-        }
-
+    int retval = recvmmsg(ctx->sock, ctx->msgs, ctx->conf.vlen, MSG_WAITFORONE, NULL);
+    if (retval < 0) {
+      perror("recvmmsg()");
+      exit(EXIT_FAILURE);
+    }
+    else if (retval > 0) {
         int i;
         for (i = 0; i < retval; i++) {
             ctx->out_bufs[i] = ctx->bufs[i];
@@ -218,21 +213,22 @@ void *cb_func(void *arg)
             }
             handle_accepted(ctx, &ctx->out_bufs[i], ctx->sock);
         }
-        int r = sendmmsg(ctx->sock, ctx->out_msgs, ctx->res_idx, MSG_WAITALL);
-        if (r <= 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
-            }
+        if (ctx->res_idx) {
+            int r = sendmmsg(ctx->sock, ctx->out_msgs, ctx->res_idx, 0);
+            if (r <= 0) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+                }
 
-            if (errno == ECONNREFUSED) {
+                if (errno == ECONNREFUSED) {
+                }
+                perror("sendmmsg()");
+             }
+            if (ctx->conf.verbose) {
+                printf("Send %d messages\n", r);
             }
-            perror("sendmmsg()");
-         }
-        if (ctx->conf.verbose) {
-            printf("Send %d messages\n", r);
+            ctx->res_idx = 0;
         }
-        ctx->res_idx = 0;
     }
-
 }
 
 
@@ -246,30 +242,24 @@ int start_learner(Config *conf, int (*deliver_cb)(const char* req, void* arg, ch
 
     struct timeval timeout = {1, 0};
 
-    if(pthread_create(&ctx->recv_th, NULL, cb_func, ctx)) {
-        fprintf(stderr, "Error creating thread\n");
-        exit(EXIT_FAILURE);
-    }
-
-    struct event *monitor_ev, *evsig;
+    struct event *recv_ev;
+    recv_ev = event_new(ctx->base, ctx->sock, EV_READ|EV_PERSIST, on_value, ctx);
+    struct event *monitor_ev;
     monitor_ev = event_new(ctx->base, -1, EV_TIMEOUT|EV_PERSIST, monitor, ctx);
+    struct event *evsig;
     evsig = evsignal_new(ctx->base, SIGTERM, signal_handler, ctx);
 
     event_base_priority_init(ctx->base, 4);
     event_priority_set(evsig, 0);
     event_priority_set(monitor_ev, 1);
     
+    event_add(recv_ev, NULL);
     event_add(monitor_ev, &timeout);
     event_add(evsig, NULL);
 
     // Comment the line below for valgrind check
     event_base_dispatch(ctx->base);
-
-    if(pthread_join(ctx->recv_th, NULL)) {
-        fprintf(stderr, "Error joining thread\n");
-        exit(EXIT_FAILURE);
-    }
-
+    event_free(recv_ev);
     event_free(monitor_ev);
     event_free(evsig);
 

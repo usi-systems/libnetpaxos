@@ -2,13 +2,10 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <pthread.h>
 #include <assert.h>
 #include <time.h>
 #include <unistd.h>
 #include "netpaxos_utils.h"
-
-pthread_mutex_t mutexmps;
 
 enum boolean { false, true };
 
@@ -94,10 +91,8 @@ void *monitor(void *arg)
 {
     int  *mps = arg;
     while(true) {
-        pthread_mutex_lock (&mutexmps);
         printf("%d\n", *mps);
         *mps = 0;
-        pthread_mutex_unlock (&mutexmps);
         sleep(1);
     }
 
@@ -174,10 +169,6 @@ void read_random(struct data *ctx, int num_elements, int num_keys, char** keys, 
 int main() {
     struct data *sync_ctx = new_data();
 
-    /***************** pthread *********************/
-    // pthread_t monitor_thread;
-    // pthread_create(&monitor_thread, NULL, monitor, &mps);
-    /******************************************/
     int n = 10;
     size_t size = 16;
     char **keys = generate_array(n, size);
@@ -241,7 +232,6 @@ int main() {
     destroy_db(cached_ctx, "/tmp/leveldb_fillcached");
 
 
-    // pthread_join(monitor_thread, NULL);
     free_generated_array(keys, n);
     free_generated_array(values, n);
     free_data(sync_ctx);

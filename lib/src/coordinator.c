@@ -18,7 +18,6 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <errno.h>
-#include <pthread.h>
 #include "message.h"
 #include "netpaxos_utils.h"
 #include "config.h"
@@ -30,7 +29,6 @@ CoordinatorCtx *coordinator_new(Config conf) {
     CoordinatorCtx *ctx = malloc(sizeof(CoordinatorCtx));
     ctx->conf = conf;
     ctx->cur_inst = 0;
-    ctx->running = 1;
     ctx->msgs = calloc(ctx->conf.vlen, sizeof(struct mmsghdr));
     ctx->iovecs = calloc(ctx->conf.vlen, sizeof(struct iovec));
     ctx->out_msgs = calloc(ctx->conf.vlen, sizeof(struct mmsghdr));
@@ -51,9 +49,6 @@ CoordinatorCtx *coordinator_new(Config conf) {
         ctx->msgs[i].msg_hdr.msg_name    = ctx->addrbufs[i];
         ctx->msgs[i].msg_hdr.msg_namelen = BUFSIZE;
     }
-    ctx->timeout.tv_sec = TIMEOUT;
-    ctx->timeout.tv_sec = 0;
-
     return ctx;
 }
 
@@ -91,21 +86,16 @@ void signal_handler(evutil_socket_t fd, short what, void *arg) {
     CoordinatorCtx *ctx = arg;
     if (what&EV_SIGNAL) {
         event_base_loopbreak(ctx->base);
-        ctx->running = 0;
-        pthread_cancel(ctx->recv_th);
     }
 }
 
-void *on_value(void *arg)
-{
+void on_value(evutil_socket_t fd, short what, void *arg) {
     CoordinatorCtx *ctx = (CoordinatorCtx *) arg;
-    while(ctx->running) {
-        int retval = recvmmsg(ctx->sock, ctx->msgs, ctx->conf.vlen, MSG_WAITALL, NULL);
-        if (retval < 0) {
-          perror("recvmmsg()");
-          return NULL;
-        }
-
+    int retval = recvmmsg(ctx->sock, ctx->msgs, ctx->conf.vlen, MSG_WAITFORONE, NULL);
+    if (retval < 0) {
+      perror("recvmmsg()");
+    }
+    else if (retval > 0) {
         int i;
         for (i = 0; i < retval; i++) {
             ctx->bufs[i][ctx->msgs[i].msg_len] = 0;
@@ -125,7 +115,7 @@ void *on_value(void *arg)
             ctx->out_iovecs[i].iov_base         = (void*)&ctx->out_bufs[i];
             ctx->out_iovecs[i].iov_len          = sizeof(Message);
         }
-        int r = sendmmsg(ctx->sock, ctx->out_msgs, retval, MSG_WAITALL);
+        int r = sendmmsg(ctx->sock, ctx->out_msgs, retval, 0);
         if (r <= 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
             }
@@ -138,7 +128,6 @@ void *on_value(void *arg)
             printf("Send %d messages\n", r);
         }
     }
-    return NULL;
 }
 
 
@@ -169,21 +158,17 @@ int start_coordinator(Config *conf) {
     addMembership(conf->proposer_addr, listen_socket);
     ctx->sock = listen_socket;
 
-    if(pthread_create(&ctx->recv_th, NULL, on_value, ctx)) {
-        fprintf(stderr, "Error creating thread\n");
-        exit(EXIT_FAILURE);
-    }
+    struct event *ev_recv;
+    ev_recv = event_new(ctx->base, ctx->sock, EV_READ|EV_PERSIST, on_value, ctx);
+    event_add(ev_recv, NULL);
 
     struct event *evsig;
     evsig = evsignal_new(ctx->base, SIGTERM, signal_handler, ctx);
     event_add(evsig, NULL);
-    event_base_dispatch(ctx->base);
-    event_free(evsig);
 
-    if(pthread_join(ctx->recv_th, NULL)) {
-        fprintf(stderr, "Error joining thread\n");
-        exit(EXIT_FAILURE);
-    }
+    event_base_dispatch(ctx->base);
+    event_free(ev_recv);
+    event_free(evsig);
     coordinator_free(ctx);
 
     close(listen_socket);
