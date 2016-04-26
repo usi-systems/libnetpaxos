@@ -14,6 +14,7 @@ typedef struct a_state {
 
 
 typedef struct AcceptorCtx {
+    int sock;
     int acceptor_id;
     int packets_in_buf;
     int count_accepted;

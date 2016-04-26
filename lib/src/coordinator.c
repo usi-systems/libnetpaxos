@@ -18,6 +18,7 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <errno.h>
+#include <pthread.h>
 #include "message.h"
 #include "netpaxos_utils.h"
 #include "config.h"
@@ -32,7 +33,7 @@ CoordinatorCtx *proposer_ctx_new(Config conf) {
     ctx->packets_in_buf = VLEN;
     memset(ctx->msgs, 0, sizeof(ctx->msgs));
     int i;
-    for (i = 0; i < VLEN; i++) {
+    for (i = 0; i < ctx->packets_in_buf; i++) {
         ctx->iovecs[i].iov_base          = ctx->bufs[i];
         ctx->iovecs[i].iov_len           = BUFSIZE;
         ctx->msgs[i].msg_hdr.msg_iov     = &ctx->iovecs[i];
@@ -60,43 +61,48 @@ void init_out_msgs(CoordinatorCtx *ctx) {
     }
 }
 
-void on_value(evutil_socket_t fd, short what, void *arg)
+void *on_value(void *arg)
 {
     CoordinatorCtx *ctx = (CoordinatorCtx *) arg;
-    int retval = recvmmsg(fd, ctx->msgs, VLEN, 0, &ctx->timeout);
-    if (retval < 0) {
-      perror("recvmmsg()");
-      exit(EXIT_FAILURE);
-    }
-    int i;
-    for (i = 0; i < retval; i++) {
-        ctx->bufs[i][ctx->msgs[i].msg_len] = 0;
-        struct sockaddr_in *client = ctx->msgs[i].msg_hdr.msg_name;
-        // printf("received from %s:%d\n", inet_ntoa(client->sin_addr), ntohs(client->sin_port));
-
-        /* */
-        if (ctx->cur_inst >= ctx->conf.maxinst)
-            ctx->cur_inst = 0;
-        
-        initialize_message(&ctx->out_bufs[i], phase2a);
-        memcpy(&ctx->out_bufs[i].paxosval, ctx->bufs[i], ctx->msgs[i].msg_len - 1);
-        ctx->out_bufs[i].inst = ctx->cur_inst++;
-        ctx->out_bufs[i].client = *client;
-        if(ctx->conf.verbose)
-            print_message(&ctx->out_bufs[i]);
-        pack(&ctx->out_bufs[i]);
-        ctx->out_iovecs[i].iov_base         = (void*)&ctx->out_bufs[i];
-        ctx->out_iovecs[i].iov_len          = sizeof(Message);
-    }
-    int r = sendmmsg(fd, ctx->out_msgs, retval, 0);
-    if (r <= 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+    while(1) {
+        int retval = recvmmsg(ctx->sock, ctx->msgs, ctx->packets_in_buf, MSG_WAITALL, NULL);
+        if (retval < 0) {
+          perror("recvmmsg()");
+          exit(EXIT_FAILURE);
         }
 
-        if (errno == ECONNREFUSED) {
+        int i;
+        for (i = 0; i < retval; i++) {
+            ctx->bufs[i][ctx->msgs[i].msg_len] = 0;
+            struct sockaddr_in *client = ctx->msgs[i].msg_hdr.msg_name;
+            // printf("received from %s:%d\n", inet_ntoa(client->sin_addr), ntohs(client->sin_port));
+            if (ctx->cur_inst >= ctx->conf.maxinst)
+                ctx->cur_inst = 0;
+            initialize_message(&ctx->out_bufs[i], phase2a);
+            memcpy(&ctx->out_bufs[i].paxosval, ctx->bufs[i], ctx->msgs[i].msg_len - 1);
+            ctx->out_bufs[i].inst = ctx->cur_inst++;
+            ctx->out_bufs[i].client = *client;
+            if(ctx->conf.verbose) {
+                printf("Received %d messages\n", retval);
+                print_message(&ctx->out_bufs[i]);
+            }
+            pack(&ctx->out_bufs[i]);
+            ctx->out_iovecs[i].iov_base         = (void*)&ctx->out_bufs[i];
+            ctx->out_iovecs[i].iov_len          = sizeof(Message);
         }
-        perror("sendmmsg()");
-     }
+        int r = sendmmsg(ctx->sock, ctx->out_msgs, retval, MSG_WAITALL);
+        if (r <= 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+            }
+
+            if (errno == ECONNREFUSED) {
+            }
+            perror("sendmmsg()");
+        }
+        if(ctx->conf.verbose) {
+            printf("Send %d messages\n", r);
+        }
+    }
 }
 
 
@@ -107,14 +113,6 @@ int start_coordinator(Config *conf) {
     struct hostent *server;
     int serverlen;
     ctx->acceptor_addr = malloc( sizeof (struct sockaddr_in) );
-
-    // socket to send Paxos messages to acceptors
-    int sock = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sock < 0) {
-        perror("cannot create socket");
-        return EXIT_FAILURE;
-    }
-    ctx->sock = sock;
 
     server = gethostbyname(conf->acceptor_addr);
     if (server == NULL) {
@@ -131,16 +129,25 @@ int start_coordinator(Config *conf) {
 
     init_out_msgs(ctx);
 
-    struct event *ev_recv;
     int listen_socket = create_server_socket(conf->proposer_port);
     addMembership(conf->proposer_addr, listen_socket);
-    ev_recv = event_new(ctx->base, listen_socket, EV_READ|EV_PERSIST, on_value, ctx);
+    ctx->sock = listen_socket;
 
-    event_add(ev_recv, NULL);
+    pthread_t recv_th;
+    if(pthread_create(&recv_th, NULL, on_value, ctx)) {
+        fprintf(stderr, "Error creating thread\n");
+        exit(EXIT_FAILURE);
+    }
+
 
     event_base_dispatch(ctx->base);
     // close(client_sock);
-    close(sock);
+    if(pthread_join(recv_th, NULL)) {
+        fprintf(stderr, "Error joining thread\n");
+        exit(EXIT_FAILURE);
+    }
+
+    close(listen_socket);
     return EXIT_SUCCESS;
 }
 

@@ -29,6 +29,8 @@ typedef struct LearnerCtx {
     int mps;
     int num_packets;
     int maj;
+    int sock;
+    int res_idx;
     paxos_state* *states;
     FILE *fp;
     int (*deliver)(const char* req, void* arg, char **value, int *vsize);
@@ -39,6 +41,7 @@ typedef struct LearnerCtx {
     struct mmsghdr out_msgs[VLEN];
     struct iovec out_iovecs[VLEN];
     Message out_bufs[VLEN];
+    char res_bufs[VLEN][BUFSIZE + 1];
     struct timespec timeout;
 } LearnerCtx;
 

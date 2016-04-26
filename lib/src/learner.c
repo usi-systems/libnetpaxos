@@ -11,7 +11,9 @@
 #include <inttypes.h>
 #include <signal.h>
 #include <math.h>
+#include <errno.h>
 #include <stdlib.h>
+#include <pthread.h>
 #include "message.h"
 #include "learner.h"
 #include "netpaxos_utils.h"
@@ -28,6 +30,7 @@ LearnerCtx *learner_ctx_new(Config conf) {
     ctx->base = event_base_new();
     ctx->conf = conf;
     ctx->mps = 0;
+    ctx->res_idx = 0;
     ctx->num_packets = 0;
     double maj = ((double)(conf.num_acceptors + 1)) / 2;
     ctx->maj = ceil(maj);
@@ -117,20 +120,40 @@ void handle_accepted(LearnerCtx *ctx, Message *msg, evutil_socket_t fd) {
                     ctx->num_packets++;
                     int n;
                     switch(res) {
-                        case SUCCESS:
-                            n = sendto(fd, "SUCCESS", 8, 0, (struct sockaddr*) &msg->client, sizeof(msg->client));
+                        case SUCCESS: {
+                            ctx->res_bufs[ctx->res_idx][0] = SUCCESS;
+                            ctx->out_iovecs[ctx->res_idx].iov_base         = (void *)&ctx->res_bufs[ctx->res_idx];
+                            ctx->out_iovecs[ctx->res_idx].iov_len          = 1;
+                            ctx->out_msgs[ctx->res_idx].msg_hdr.msg_name    = &msg->client;
+                            ctx->out_msgs[ctx->res_idx].msg_hdr.msg_namelen = sizeof(struct sockaddr_in);
+                            ctx->out_msgs[ctx->res_idx].msg_hdr.msg_iov    = &ctx->out_iovecs[ctx->res_idx];
+                            ctx->out_msgs[ctx->res_idx].msg_hdr.msg_iovlen = 1;
+                            ctx->res_idx++;
                             break;
+                            }
                         case GOT_VALUE: {
-                            n = sendto(fd, value, vsize, 0, (struct sockaddr*) &msg->client, sizeof(msg->client));
+                            memcpy(ctx->res_bufs[ctx->res_idx], value, vsize);
+                            ctx->out_iovecs[ctx->res_idx].iov_base         = (void *)&ctx->res_bufs[ctx->res_idx];
+                            ctx->out_iovecs[ctx->res_idx].iov_len          = vsize;
+                            ctx->out_msgs[ctx->res_idx].msg_hdr.msg_name    = &msg->client;
+                            ctx->out_msgs[ctx->res_idx].msg_hdr.msg_namelen = sizeof(struct sockaddr_in);
+                            ctx->out_msgs[ctx->res_idx].msg_hdr.msg_iov    = &ctx->out_iovecs[ctx->res_idx];
+                            ctx->out_msgs[ctx->res_idx].msg_hdr.msg_iovlen = 1;
+                            ctx->res_idx++;
                             free(value);
                             break;
                         }
-                        case NOT_FOUND:
-                            n = sendto(fd, "NOT_FOUND", 10, 0, (struct sockaddr*) &msg->client, sizeof(msg->client));
+                        case NOT_FOUND: {
+                            ctx->res_bufs[ctx->res_idx][0] = NOT_FOUND;
+                            ctx->out_iovecs[ctx->res_idx].iov_base         = (void *)&ctx->res_bufs[ctx->res_idx];
+                            ctx->out_iovecs[ctx->res_idx].iov_len          = 1;
+                            ctx->out_msgs[ctx->res_idx].msg_hdr.msg_name    = &msg->client;
+                            ctx->out_msgs[ctx->res_idx].msg_hdr.msg_namelen = sizeof(struct sockaddr_in);
+                            ctx->out_msgs[ctx->res_idx].msg_hdr.msg_iov    = &ctx->out_iovecs[ctx->res_idx];
+                            ctx->out_msgs[ctx->res_idx].msg_hdr.msg_iovlen = 1;
+                            ctx->res_idx++;
                             break;
-                    }
-                    if (n < 0) {
-                        perror("ERROR in sendto");
+                        }
                     }
                 }
             }
@@ -144,34 +167,48 @@ void handle_accepted(LearnerCtx *ctx, Message *msg, evutil_socket_t fd) {
     }
 }
 
-void cb_func(evutil_socket_t fd, short what, void *arg)
+void *cb_func(void *arg)
 {
-    LearnerCtx *ctx = (LearnerCtx *) arg;
-
-    int retval = recvmmsg(fd, ctx->msgs, VLEN, 0, &ctx->timeout);
-    if (retval < 0) {
-      perror("recvmmsg()");
-      exit(EXIT_FAILURE);
-    }
-
-    // printf("received %d messages\n", retval);
-    int i;
-    for (i = 0; i < retval; i++) {
-        ctx->out_bufs[i] = ctx->bufs[i];
-        unpack(&ctx->out_bufs[i]);
-        if (ctx->conf.verbose) {
-            // printf("client info %s:%d\n", inet_ntoa(msg.client.sin_addr), ntohs(msg.client.sin_port));
-            // printf("Received %d bytes from %s:%d\n", n, inet_ntoa(remote.sin_addr),
-                    // ntohs(remote.sin_port));
-            print_message(&ctx->out_bufs[i]);
+    LearnerCtx *ctx = arg;
+    while(1) {
+        int retval = recvmmsg(ctx->sock, ctx->msgs, VLEN, 0, NULL);
+        if (retval < 0) {
+          perror("recvmmsg()");
+          exit(EXIT_FAILURE);
         }
-        if (ctx->out_bufs[i].inst > ctx->conf.maxinst) {
+
+        int i;
+        for (i = 0; i < retval; i++) {
+            ctx->out_bufs[i] = ctx->bufs[i];
+            unpack(&ctx->out_bufs[i]);
             if (ctx->conf.verbose) {
-                fprintf(stderr, "State Overflow\n");
+                printf("client info %s:%d\n",
+                    inet_ntoa(ctx->out_bufs[i].client.sin_addr),
+                    ntohs(ctx->out_bufs[i].client.sin_port));
+                printf("received %d messages\n", retval);
+                print_message(&ctx->out_bufs[i]);
             }
-            return;
+            if (ctx->out_bufs[i].inst > ctx->conf.maxinst) {
+                if (ctx->conf.verbose) {
+                    fprintf(stderr, "State Overflow\n");
+                }
+                return;
+            }
+            handle_accepted(ctx, &ctx->out_bufs[i], ctx->sock);
         }
-        handle_accepted(ctx, &ctx->out_bufs[i], fd);
+        int r = sendmmsg(ctx->sock, ctx->out_msgs, ctx->res_idx, MSG_WAITALL);
+        if (r <= 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+            }
+
+            if (errno == ECONNREFUSED) {
+            }
+            perror("sendmmsg()");
+         }
+        if (ctx->conf.verbose) {
+            printf("Send %d messages\n", r);
+        }
+        ctx->res_idx = 0;
     }
 
 }
@@ -183,27 +220,35 @@ int start_learner(Config *conf, int (*deliver_cb)(const char* req, void* arg, ch
     ctx->deliver = deliver_cb;
     int server_socket = create_server_socket(conf->learner_port);
     addMembership(conf->learner_addr, server_socket);
+    ctx->sock = server_socket;
 
     struct timeval timeout = {1, 0};
 
-    struct event *recv_ev, *monitor_ev, *evsig;
-    recv_ev = event_new(ctx->base, server_socket, EV_READ|EV_PERSIST, cb_func, ctx);
+    pthread_t recv_th;
+    if(pthread_create(&recv_th, NULL, cb_func, ctx)) {
+        fprintf(stderr, "Error creating thread\n");
+        exit(EXIT_FAILURE);
+    }
+
+    struct event *monitor_ev, *evsig;
     monitor_ev = event_new(ctx->base, -1, EV_TIMEOUT|EV_PERSIST, monitor, ctx);
     evsig = evsignal_new(ctx->base, SIGTERM, signal_handler, ctx);
 
     event_base_priority_init(ctx->base, 4);
     event_priority_set(evsig, 0);
     event_priority_set(monitor_ev, 1);
-    event_priority_set(recv_ev, 2);
     
-    event_add(recv_ev, NULL);
     event_add(monitor_ev, &timeout);
     event_add(evsig, NULL);
 
     // Comment the line below for valgrind check
     event_base_dispatch(ctx->base);
 
-    event_free(recv_ev);
+    if(pthread_join(recv_th, NULL)) {
+        fprintf(stderr, "Error joining thread\n");
+        exit(EXIT_FAILURE);
+    }
+
     event_free(monitor_ev);
     event_free(evsig);
 
