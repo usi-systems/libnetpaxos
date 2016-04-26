@@ -24,9 +24,6 @@
 #include "application.h"
 #include "message.h"
 
-#define out_MSGSIZE 32
-
-
 struct client_state {
     int mps;
     int sock;
@@ -38,13 +35,15 @@ struct client_state {
     char *payload;
     int payload_sz;
     int src_port;
+    int running;
     struct mmsghdr *out_msgs;
     struct iovec *out_iovecs;
     struct mmsghdr *msgs;
     struct iovec *iovecs;
-    char bufs[VLEN][BUFSIZE + 1];
+    char **bufs;
     struct timespec timeout;
     FILE *fp;
+    pthread_t recv_th;
 };
 
 void send_message(struct client_state *state);
@@ -52,7 +51,9 @@ void send_message(struct client_state *state);
 void signal_handler(evutil_socket_t fd, short what, void *arg) {
     struct client_state *state = (struct client_state*) arg;
     if (what&EV_SIGNAL) {
+        state->running = 0;
         event_base_loopbreak(state->base);
+        pthread_cancel(state->recv_th);
         printf("Stop client\n");
     }
 }
@@ -70,8 +71,8 @@ void monitor(evutil_socket_t fd, short what, void *arg) {
 void *thread_loop(void *arg) {
     struct client_state *state = arg;
     struct timespec recv_time, result;
-    while(1) {
-        int retval = recvmmsg(state->sock, state->msgs, VLEN, 0, NULL);
+    while(state->running) {
+        int retval = recvmmsg(state->sock, state->msgs, state->vlen, 0, NULL);
         if (retval < 0) {
           perror("recvmmsg()");
           exit(EXIT_FAILURE);
@@ -98,26 +99,30 @@ void *thread_loop(void *arg) {
         send_message(state);
         gettime(&state->send_time);
     }
+    return NULL;
 }
 
 void send_message(struct client_state *state) {
-    int r = sendmmsg(state->sock, state->out_msgs, state->vlen, 0);
-    if (r <= 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
-        }
+    if (state->running) {
+        int r = sendmmsg(state->sock, state->out_msgs, state->vlen, 0);
+        if (r <= 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+            }
 
-        if (errno == ECONNREFUSED) {
+            if (errno == ECONNREFUSED) {
+            }
+            perror("sendmmsg()");
         }
-        perror("sendmmsg()");
-    }
-    if (state->verbose) {
-        printf("Send %d messages\n", r);
+        if (state->verbose) {
+            printf("Send %d messages\n", r);
+        }
     }
 }
 
 struct client_state* client_state_new(Config *conf) {
     struct client_state *state = malloc(sizeof(struct client_state));
     state->base = event_base_new();
+    state->running = 1;
     state->payload = malloc(32);
     char key[] = "abcde123456789";
     char value[] = "zxcvbnmasdfghj";
@@ -137,13 +142,29 @@ struct client_state* client_state_new(Config *conf) {
     state->iovecs = calloc(state->vlen, sizeof(struct iovec));
     state->out_msgs = calloc(state->vlen, sizeof(struct mmsghdr));
     state->out_iovecs = calloc(state->vlen, sizeof(struct iovec));
+    state->bufs = calloc(state->vlen, sizeof(char*));
+    int i;
+    for (i = 0; i < state->vlen; i++) {
+        state->bufs[i] = malloc(BUFSIZE + 1);
+    }
     return state;
 }
 
 void client_state_free(struct client_state *state) {
     fclose(state->fp);
     event_base_free(state->base);
+    free(state->payload);
+    free(state->msgs);
+    free(state->iovecs);
+    free(state->out_msgs);
+    free(state->out_iovecs);
     free(state->proposer);
+
+    int i;
+    for (i = 0; i < state->vlen; i++) {
+        free(state->bufs[i]);
+    }
+    free(state->bufs);
     free(state);
 }
 
@@ -199,8 +220,7 @@ int main(int argc, char* argv[]) {
 
     state->fp = fopen(argv[2], "w+");
 
-    pthread_t recv_th;
-    if(pthread_create(&recv_th, NULL, thread_loop, state)) {
+    if(pthread_create(&state->recv_th, NULL, thread_loop, state)) {
         fprintf(stderr, "Error creating thread\n");
         exit(EXIT_FAILURE);
     }
@@ -222,7 +242,7 @@ int main(int argc, char* argv[]) {
     client_state_free(state);
     close(sock);
 
-    if(pthread_join(recv_th, NULL)) {
+    if(pthread_join(state->recv_th, NULL)) {
         fprintf(stderr, "Error joining thread\n");
         exit(EXIT_FAILURE);
     }

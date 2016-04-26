@@ -5,7 +5,6 @@
 
 #define PAXOS_VALUE_SIZE 32
 
-#define VLEN 10
 #define BUFSIZE 200
 #define TIMEOUT 1
 

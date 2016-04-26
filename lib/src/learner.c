@@ -50,9 +50,19 @@ LearnerCtx *learner_ctx_new(Config conf) {
     if ( n < 0 || n >= sizeof fname )
         exit(EXIT_FAILURE);
     // ctx->fp = fopen(fname, "w+");
-    for (i = 0; i < VLEN; i++) {
-        ctx->iovecs[i].iov_base          = (void *)&ctx->bufs[i];
-        ctx->iovecs[i].iov_len           = BUFSIZE;
+    ctx->msgs = calloc(ctx->conf.vlen, sizeof(struct mmsghdr));
+    ctx->iovecs = calloc(ctx->conf.vlen, sizeof(struct iovec));
+    ctx->out_msgs = calloc(ctx->conf.vlen, sizeof(struct mmsghdr));
+    ctx->out_iovecs = calloc(ctx->conf.vlen, sizeof(struct iovec));
+    ctx->out_bufs = calloc(ctx->conf.vlen, sizeof(struct Message));
+    ctx->bufs = calloc(ctx->conf.vlen, sizeof(struct Message));
+    ctx->res_bufs = calloc(ctx->conf.vlen, sizeof(char*));
+    for (i = 0; i < ctx->conf.vlen; i++) {
+        ctx->res_bufs[i] = malloc(BUFSIZE + 1);
+    }
+    for (i = 0; i < ctx->conf.vlen; i++) {
+        ctx->iovecs[i].iov_base          = &ctx->bufs[i];
+        ctx->iovecs[i].iov_len           = sizeof(struct Message);
         ctx->msgs[i].msg_hdr.msg_iov     = &ctx->iovecs[i];
         ctx->msgs[i].msg_hdr.msg_iovlen  = 1;
     }
@@ -71,6 +81,17 @@ void learner_ctx_destroy(LearnerCtx *ctx) {
         free(ctx->states[i]);
     }
     free(ctx->states);
+
+    free(ctx->msgs);
+    free(ctx->iovecs);
+    free(ctx->bufs);
+    free(ctx->out_msgs);
+    free(ctx->out_iovecs);
+    free(ctx->out_bufs);
+    for (i = 0; i < ctx->conf.vlen; i++) {
+        free(ctx->res_bufs[i]);
+    }
+    free(ctx->res_bufs);
     free(ctx);
 }
 
@@ -78,6 +99,7 @@ void signal_handler(evutil_socket_t fd, short what, void *arg) {
     LearnerCtx *ctx = (LearnerCtx *) arg;
     if (what&EV_SIGNAL) {
         event_base_loopbreak(ctx->base);
+        pthread_cancel(ctx->recv_th);
         // disable for now
         // int i;
         // for (i = 0; i < ctx->conf.maxinst; i++) {
@@ -171,7 +193,7 @@ void *cb_func(void *arg)
 {
     LearnerCtx *ctx = arg;
     while(1) {
-        int retval = recvmmsg(ctx->sock, ctx->msgs, VLEN, 0, NULL);
+        int retval = recvmmsg(ctx->sock, ctx->msgs, ctx->conf.vlen, 0, NULL);
         if (retval < 0) {
           perror("recvmmsg()");
           exit(EXIT_FAILURE);
@@ -224,8 +246,7 @@ int start_learner(Config *conf, int (*deliver_cb)(const char* req, void* arg, ch
 
     struct timeval timeout = {1, 0};
 
-    pthread_t recv_th;
-    if(pthread_create(&recv_th, NULL, cb_func, ctx)) {
+    if(pthread_create(&ctx->recv_th, NULL, cb_func, ctx)) {
         fprintf(stderr, "Error creating thread\n");
         exit(EXIT_FAILURE);
     }
@@ -244,7 +265,7 @@ int start_learner(Config *conf, int (*deliver_cb)(const char* req, void* arg, ch
     // Comment the line below for valgrind check
     event_base_dispatch(ctx->base);
 
-    if(pthread_join(recv_th, NULL)) {
+    if(pthread_join(ctx->recv_th, NULL)) {
         fprintf(stderr, "Error joining thread\n");
         exit(EXIT_FAILURE);
     }

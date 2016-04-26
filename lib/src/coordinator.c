@@ -26,19 +26,29 @@
 
 void propose_value(CoordinatorCtx *ctx, void *arg, int size, struct sockaddr_in client);
 
-CoordinatorCtx *proposer_ctx_new(Config conf) {
+CoordinatorCtx *coordinator_new(Config conf) {
     CoordinatorCtx *ctx = malloc(sizeof(CoordinatorCtx));
     ctx->conf = conf;
     ctx->cur_inst = 0;
-    ctx->packets_in_buf = VLEN;
-    memset(ctx->msgs, 0, sizeof(ctx->msgs));
+    ctx->running = 1;
+    ctx->msgs = calloc(ctx->conf.vlen, sizeof(struct mmsghdr));
+    ctx->iovecs = calloc(ctx->conf.vlen, sizeof(struct iovec));
+    ctx->out_msgs = calloc(ctx->conf.vlen, sizeof(struct mmsghdr));
+    ctx->out_iovecs = calloc(ctx->conf.vlen, sizeof(struct iovec));
+    ctx->out_bufs = calloc(ctx->conf.vlen, sizeof(struct Message));
+    ctx->bufs = calloc(ctx->conf.vlen, sizeof(char*));
+    ctx->addrbufs = calloc(ctx->conf.vlen, sizeof(char*));
     int i;
-    for (i = 0; i < ctx->packets_in_buf; i++) {
+    for (i = 0; i < ctx->conf.vlen; i++) {
+        ctx->bufs[i] = malloc(BUFSIZE + 1);
+        ctx->addrbufs[i] = malloc(BUFSIZE + 1);
+    }
+    for (i = 0; i < ctx->conf.vlen; i++) {
         ctx->iovecs[i].iov_base          = ctx->bufs[i];
         ctx->iovecs[i].iov_len           = BUFSIZE;
         ctx->msgs[i].msg_hdr.msg_iov     = &ctx->iovecs[i];
         ctx->msgs[i].msg_hdr.msg_iovlen  = 1;
-        ctx->msgs[i].msg_hdr.msg_name    = &ctx->addrbufs[i];
+        ctx->msgs[i].msg_hdr.msg_name    = ctx->addrbufs[i];
         ctx->msgs[i].msg_hdr.msg_namelen = BUFSIZE;
     }
     ctx->timeout.tv_sec = TIMEOUT;
@@ -47,13 +57,28 @@ CoordinatorCtx *proposer_ctx_new(Config conf) {
     return ctx;
 }
 
+void coordinator_free(CoordinatorCtx *ctx) {
+    event_base_free(ctx->base);
+    free(ctx->msgs);
+    free(ctx->iovecs);
+    free(ctx->out_msgs);
+    free(ctx->out_iovecs);
+    free(ctx->out_bufs);
+    int i;
+    for (i = 0; i < ctx->conf.vlen; i++) {
+        free(ctx->bufs[i]);
+        free(ctx->addrbufs[i]);
+    }
+    free(ctx->acceptor_addr);
+    free(ctx->bufs);
+    free(ctx->addrbufs);
+    free(ctx);
+
+}
+
 void init_out_msgs(CoordinatorCtx *ctx) {
     int i;
-    ctx->out_msgs = calloc(ctx->packets_in_buf, sizeof(struct mmsghdr));
-    ctx->out_iovecs = calloc(ctx->packets_in_buf, sizeof(struct iovec));
-    for (i = 0; i < ctx->packets_in_buf; i++) {
-        // ctx->out_iovecs[i].iov_base         = (void*)ctx->payload;
-        // ctx->out_iovecs[i].iov_len          = ctx->payload_sz;
+    for (i = 0; i < ctx->conf.vlen; i++) {
         ctx->out_msgs[i].msg_hdr.msg_name    = (void *)ctx->acceptor_addr;
         ctx->out_msgs[i].msg_hdr.msg_namelen = sizeof(struct sockaddr_in);
         ctx->out_msgs[i].msg_hdr.msg_iov    = &ctx->out_iovecs[i];
@@ -61,14 +86,24 @@ void init_out_msgs(CoordinatorCtx *ctx) {
     }
 }
 
+
+void signal_handler(evutil_socket_t fd, short what, void *arg) {
+    CoordinatorCtx *ctx = arg;
+    if (what&EV_SIGNAL) {
+        event_base_loopbreak(ctx->base);
+        ctx->running = 0;
+        pthread_cancel(ctx->recv_th);
+    }
+}
+
 void *on_value(void *arg)
 {
     CoordinatorCtx *ctx = (CoordinatorCtx *) arg;
-    while(1) {
-        int retval = recvmmsg(ctx->sock, ctx->msgs, ctx->packets_in_buf, MSG_WAITALL, NULL);
+    while(ctx->running) {
+        int retval = recvmmsg(ctx->sock, ctx->msgs, ctx->conf.vlen, MSG_WAITALL, NULL);
         if (retval < 0) {
           perror("recvmmsg()");
-          exit(EXIT_FAILURE);
+          return NULL;
         }
 
         int i;
@@ -79,7 +114,7 @@ void *on_value(void *arg)
             if (ctx->cur_inst >= ctx->conf.maxinst)
                 ctx->cur_inst = 0;
             initialize_message(&ctx->out_bufs[i], phase2a);
-            memcpy(&ctx->out_bufs[i].paxosval, ctx->bufs[i], ctx->msgs[i].msg_len - 1);
+            memcpy(ctx->out_bufs[i].paxosval, ctx->bufs[i], ctx->msgs[i].msg_len - 1);
             ctx->out_bufs[i].inst = ctx->cur_inst++;
             ctx->out_bufs[i].client = *client;
             if(ctx->conf.verbose) {
@@ -103,12 +138,13 @@ void *on_value(void *arg)
             printf("Send %d messages\n", r);
         }
     }
+    return NULL;
 }
 
 
 
 int start_coordinator(Config *conf) {
-    CoordinatorCtx *ctx = proposer_ctx_new(*conf);
+    CoordinatorCtx *ctx = coordinator_new(*conf);
     ctx->base = event_base_new();
     struct hostent *server;
     int serverlen;
@@ -133,19 +169,22 @@ int start_coordinator(Config *conf) {
     addMembership(conf->proposer_addr, listen_socket);
     ctx->sock = listen_socket;
 
-    pthread_t recv_th;
-    if(pthread_create(&recv_th, NULL, on_value, ctx)) {
+    if(pthread_create(&ctx->recv_th, NULL, on_value, ctx)) {
         fprintf(stderr, "Error creating thread\n");
         exit(EXIT_FAILURE);
     }
 
-
+    struct event *evsig;
+    evsig = evsignal_new(ctx->base, SIGTERM, signal_handler, ctx);
+    event_add(evsig, NULL);
     event_base_dispatch(ctx->base);
-    // close(client_sock);
-    if(pthread_join(recv_th, NULL)) {
+    event_free(evsig);
+
+    if(pthread_join(ctx->recv_th, NULL)) {
         fprintf(stderr, "Error joining thread\n");
         exit(EXIT_FAILURE);
     }
+    coordinator_free(ctx);
 
     close(listen_socket);
     return EXIT_SUCCESS;

@@ -27,8 +27,8 @@ AcceptorCtx *acceptor_ctx_new(Config conf, int acceptor_id) {
     AcceptorCtx *ctx = malloc(sizeof(AcceptorCtx));
     ctx->conf = conf;
     ctx->acceptor_id = acceptor_id;
-    ctx->packets_in_buf = VLEN;
     ctx->count_accepted = 0;
+    ctx->learner_addr = malloc( sizeof(struct sockaddr_in) );
     ctx->states = calloc(ctx->conf.maxinst, sizeof(a_state));
     int i;
     for (i = 0; i < ctx->conf.maxinst; i++) {
@@ -43,10 +43,15 @@ AcceptorCtx *acceptor_ctx_new(Config conf, int acceptor_id) {
     if ( n < 0 || n >= sizeof fname )
         exit(EXIT_FAILURE);
     // ctx->fp = fopen(fname, "w+");
-    memset(ctx->msgs, 0, sizeof(ctx->msgs));
-    for (i = 0; i < VLEN; i++) {
-        ctx->iovecs[i].iov_base          = (void *)&ctx->bufs[i];
-        ctx->iovecs[i].iov_len           = BUFSIZE;
+    ctx->msgs = calloc(ctx->conf.vlen, sizeof(struct mmsghdr));
+    ctx->iovecs = calloc(ctx->conf.vlen, sizeof(struct iovec));
+    ctx->out_msgs = calloc(ctx->conf.vlen, sizeof(struct mmsghdr));
+    ctx->out_iovecs = calloc(ctx->conf.vlen, sizeof(struct iovec));
+    ctx->out_bufs = calloc(ctx->conf.vlen, sizeof(struct Message));
+    ctx->bufs = calloc(ctx->conf.vlen, sizeof(struct Message));
+    for (i = 0; i < ctx->conf.vlen; i++) {
+        ctx->iovecs[i].iov_base          = &ctx->bufs[i];
+        ctx->iovecs[i].iov_len           = sizeof(struct Message);
         ctx->msgs[i].msg_hdr.msg_iov     = &ctx->iovecs[i];
         ctx->msgs[i].msg_hdr.msg_iovlen  = 1;
     }
@@ -66,7 +71,12 @@ void acceptor_ctx_destroy(AcceptorCtx *ctx) {
         free(ctx->states[i]);
     }
     free(ctx->states);
-
+    free(ctx->msgs);
+    free(ctx->iovecs);
+    free(ctx->out_msgs);
+    free(ctx->out_iovecs);
+    free(ctx->out_bufs);
+    free(ctx->bufs);
     free(ctx);
 }
 
@@ -74,6 +84,7 @@ void signal_handler(evutil_socket_t fd, short what, void *arg) {
     AcceptorCtx *ctx = (AcceptorCtx *) arg;
     if (what&EV_SIGNAL) {
         event_base_loopbreak(ctx->base);
+        pthread_cancel(ctx->recv_th);
         // int i;
         // for (i = 0; i < ctx->conf.maxinst; i++) {
         //     fprintf(ctx->fp, "%s\n", ctx->states[i]->paxosval);
@@ -113,7 +124,7 @@ void *on_value(void *arg)
 {
     AcceptorCtx *ctx = (AcceptorCtx *) arg;
     while(1) {
-        int retval = recvmmsg(ctx->sock, ctx->msgs, VLEN, 0, NULL);
+        int retval = recvmmsg(ctx->sock, ctx->msgs, ctx->conf.vlen, 0, NULL);
         if (retval < 0) {
           perror("recvmmsg()");
           exit(EXIT_FAILURE);
@@ -176,7 +187,6 @@ int start_acceptor(Config *conf, int acceptor_id) {
 
     struct hostent *learner;
     int learnerlen;
-    ctx->learner_addr = malloc( sizeof (struct sockaddr_in) );
     learner = gethostbyname(conf->learner_addr);
     if (learner == NULL) {
         fprintf(stderr, "ERROR, no such host as %s\n", conf->learner_addr);
@@ -190,8 +200,7 @@ int start_acceptor(Config *conf, int acceptor_id) {
       (char *)&(ctx->learner_addr->sin_addr.s_addr), learner->h_length);
     ctx->learner_addr->sin_port = htons(conf->learner_port);
 
-    pthread_t recv_th;
-    if(pthread_create(&recv_th, NULL, on_value, ctx)) {
+    if(pthread_create(&ctx->recv_th, NULL, on_value, ctx)) {
         fprintf(stderr, "Error creating thread\n");
         exit(EXIT_FAILURE);
     }
@@ -204,7 +213,7 @@ int start_acceptor(Config *conf, int acceptor_id) {
     event_base_dispatch(ctx->base);
     event_free(evsig);
 
-    if(pthread_join(recv_th, NULL)) {
+    if(pthread_join(ctx->recv_th, NULL)) {
         fprintf(stderr, "Error joining thread\n");
         exit(EXIT_FAILURE);
     }
