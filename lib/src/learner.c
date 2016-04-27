@@ -249,15 +249,16 @@ int start_learner(Config *conf, int (*deliver_cb)(const char* req, void* arg, ch
     monitor_ev = event_new(ctx->base, -1, EV_TIMEOUT|EV_PERSIST, monitor, ctx);
     struct event *ev_sigterm;
     ev_sigterm = evsignal_new(ctx->base, SIGTERM, signal_handler, ctx);
-
-    event_base_priority_init(ctx->base, 4);
-    event_priority_set(ev_sigterm, 0);
-    event_priority_set(monitor_ev, 1);
-
     struct event *ev_sigint;
     ev_sigint = evsignal_new(ctx->base, SIGINT, signal_handler, ctx);
+
+    event_base_priority_init(ctx->base, 4);
+    event_priority_set(ev_sigint, 0);
+    event_priority_set(ev_sigterm, 1);
+    event_priority_set(monitor_ev, 2);
+    event_priority_set(recv_ev, 3);
+
     event_add(ev_sigint, NULL);
-    
     event_add(recv_ev, NULL);
     event_add(monitor_ev, &timeout);
     event_add(ev_sigterm, NULL);
