@@ -17,7 +17,7 @@ typedef struct CoordinatorCtx {
     evutil_socket_t sock;
     struct mmsghdr *msgs;
     struct iovec *iovecs;
-    char **bufs;
+    Message *bufs;
     char **addrbufs;
     struct mmsghdr *out_msgs;
     struct iovec *out_iovecs;

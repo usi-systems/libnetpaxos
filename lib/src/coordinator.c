@@ -34,15 +34,14 @@ CoordinatorCtx *coordinator_new(Config conf) {
     ctx->out_msgs = calloc(ctx->conf.vlen, sizeof(struct mmsghdr));
     ctx->out_iovecs = calloc(ctx->conf.vlen, sizeof(struct iovec));
     ctx->out_bufs = calloc(ctx->conf.vlen, sizeof(struct Message));
-    ctx->bufs = calloc(ctx->conf.vlen, sizeof(char*));
+    ctx->bufs = calloc(ctx->conf.vlen, sizeof(Message));
     ctx->addrbufs = calloc(ctx->conf.vlen, sizeof(char*));
     int i;
     for (i = 0; i < ctx->conf.vlen; i++) {
-        ctx->bufs[i] = malloc(BUFSIZE + 1);
         ctx->addrbufs[i] = malloc(BUFSIZE + 1);
     }
     for (i = 0; i < ctx->conf.vlen; i++) {
-        ctx->iovecs[i].iov_base          = ctx->bufs[i];
+        ctx->iovecs[i].iov_base          = &ctx->bufs[i];
         ctx->iovecs[i].iov_len           = BUFSIZE;
         ctx->msgs[i].msg_hdr.msg_iov     = &ctx->iovecs[i];
         ctx->msgs[i].msg_hdr.msg_iovlen  = 1;
@@ -61,7 +60,6 @@ void coordinator_free(CoordinatorCtx *ctx) {
     free(ctx->out_bufs);
     int i;
     for (i = 0; i < ctx->conf.vlen; i++) {
-        free(ctx->bufs[i]);
         free(ctx->addrbufs[i]);
     }
     free(ctx->acceptor_addr);
@@ -99,15 +97,13 @@ void on_value(evutil_socket_t fd, short what, void *arg) {
     else if (retval > 0) {
         int i;
         for (i = 0; i < retval; i++) {
-            ctx->bufs[i][ctx->msgs[i].msg_len] = 0;
             struct sockaddr_in *client = ctx->msgs[i].msg_hdr.msg_name;
             // printf("received from %s:%d\n", inet_ntoa(client->sin_addr), ntohs(client->sin_port));
             if (ctx->cur_inst >= ctx->conf.maxinst)
                 ctx->cur_inst = 0;
-            initialize_message(&ctx->out_bufs[i], phase2a);
-            memcpy(ctx->out_bufs[i].paxosval, ctx->bufs[i], ctx->msgs[i].msg_len - 1);
+            memcpy(&ctx->out_bufs[i], &ctx->bufs[i], ctx->msgs[i].msg_len);
+            unpack(&ctx->out_bufs[i]);
             ctx->out_bufs[i].inst = ctx->cur_inst++;
-            ctx->out_bufs[i].client = *client;
             if(ctx->conf.verbose) {
                 printf("Received %d messages\n", retval);
                 print_message(&ctx->out_bufs[i]);
@@ -155,8 +151,8 @@ int start_coordinator(Config *conf) {
 
     init_out_msgs(ctx);
 
-    int listen_socket = create_server_socket(conf->proposer_port);
-    addMembership(conf->proposer_addr, listen_socket);
+    int listen_socket = create_server_socket(conf->coordinator_port);
+    addMembership(conf->coordinator_addr, listen_socket);
     ctx->sock = listen_socket;
 
     struct event *ev_recv;

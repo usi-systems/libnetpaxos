@@ -66,8 +66,8 @@ void submit(char* msg, int msg_size, struct proposer_state *state, deliver_fn re
     m.paxosval[msg_size] = '\0';
     m.client = *state->mine;
     pack(&m);
-    socklen_t serverlen = sizeof(*state->acceptor);
-    int n = sendto(state->sock, &m, sizeof(Message), 0, (struct sockaddr*) state->acceptor, serverlen);
+    socklen_t serverlen = sizeof(*state->coordinator);
+    int n = sendto(state->sock, &m, sizeof(Message), 0, (struct sockaddr*) state->coordinator, serverlen);
     if (n < 0) {
         perror("ERROR in sendto");
         return;
@@ -86,7 +86,7 @@ struct proposer_state* proposer_state_new(Config *conf) {
 }
 
 int init_proposer(struct proposer_state *state, char* interface) {
-    struct sockaddr_in *acceptor = malloc(sizeof (struct sockaddr_in));
+    struct sockaddr_in *coordinator = malloc(sizeof (struct sockaddr_in));
     state->mine = malloc(sizeof (struct sockaddr_in));
     socklen_t len = sizeof(struct sockaddr_in);
     int sock = create_server_socket(0);
@@ -95,9 +95,9 @@ int init_proposer(struct proposer_state *state, char* interface) {
         return EXIT_FAILURE;
     }
     state->sock = sock;
-    struct hostent *server = gethostbyname(state->conf.acceptor_addr);
+    struct hostent *server = gethostbyname(state->conf.coordinator_addr);
     if (server == NULL) {
-        fprintf(stderr, "ERROR, no such host as %s\n", state->conf.acceptor_addr);
+        fprintf(stderr, "ERROR, no such host as %s\n", state->conf.coordinator_addr);
         return EXIT_FAILURE;
     }
     if (getsockname(sock, (struct sockaddr *)state->mine, &len) == -1) {
@@ -115,19 +115,19 @@ int init_proposer(struct proposer_state *state, char* interface) {
     // printf("address %s, port %d\n", inet_ntoa(state->mine->sin_addr), ntohs(state->mine->sin_port));
 
     /* build the server's Internet address */
-    bzero((char *) acceptor, sizeof(struct sockaddr_in));
-    acceptor->sin_family = AF_INET;
+    bzero((char *) coordinator, sizeof(struct sockaddr_in));
+    coordinator->sin_family = AF_INET;
     bcopy((char *)server->h_addr,
-      (char *)&(acceptor->sin_addr.s_addr), server->h_length);
-    acceptor->sin_port = htons(state->conf.acceptor_port);
-    state->acceptor = acceptor;
+      (char *)&(coordinator->sin_addr.s_addr), server->h_length);
+    coordinator->sin_port = htons(state->conf.coordinator_port);
+    state->coordinator = coordinator;
     return 0;
 }
 
 
 void free_proposer(struct proposer_state *state) {
     event_base_free(state->base);
-    free(state->acceptor);
+    free(state->coordinator);
     free(state);
 }
 

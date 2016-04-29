@@ -43,6 +43,9 @@ Config *parse_conf(char *config_file) {
         else if (strcmp(key, "PROPOSER_ADDR") == 0) {
             strcpy(conf->proposer_addr, value);
         }
+        else if (strcmp(key, "COORDINATOR_ADDR") == 0) {
+            strcpy(conf->coordinator_addr, value);
+        }
         else if (strcmp(key, "ACCEPTOR_ADDR") == 0) {
             strcpy(conf->acceptor_addr, value);
         }
@@ -51,6 +54,9 @@ Config *parse_conf(char *config_file) {
         }
         else if (strcmp(key, "PROPOSER_PORT") == 0) {
             conf->proposer_port = atoi(value);
+        }
+        else if (strcmp(key, "COORDINATOR_PORT") == 0) {
+            conf->coordinator_port = atoi(value);
         }
         else if (strcmp(key, "ACCEPTOR_PORT") == 0) {
             conf->acceptor_port = atoi(value);

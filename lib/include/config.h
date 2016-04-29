@@ -7,6 +7,7 @@ typedef struct Config {
     int microsecond;
     int verbose;
     int learner_port;
+    int coordinator_port;
     int proposer_port;
     int acceptor_port;
     int maxinst;
@@ -19,6 +20,7 @@ typedef struct Config {
     char learner_addr[64];
     char proposer_addr[64];
     char acceptor_addr[64];
+    char coordinator_addr[64];
     int num_acceptors;
 } Config;
 

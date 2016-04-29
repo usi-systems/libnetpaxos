@@ -10,7 +10,7 @@
 typedef int (*deliver_fn)(char *value, int vsize, void* arg);
 struct proposer_state {
     int sock;
-    struct sockaddr_in *acceptor;
+    struct sockaddr_in *coordinator;
     struct sockaddr_in *mine;
     struct event_base *base;
     struct Config conf;
