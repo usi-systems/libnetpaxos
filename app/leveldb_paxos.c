@@ -37,14 +37,14 @@ struct application* application_new() {
 }
 
 void application_destroy(struct application *state) {
-    char *err = NULL;
+    // char *err = NULL;
     leveldb_close(state->db);
-    leveldb_destroy_db(state->options, "/tmp/testdb", &err);
-    if (err != NULL) {
-      fprintf(stderr, "Destroy fail.\n");
-      return;
-    }
-    leveldb_free(err); err = NULL;
+    // leveldb_destroy_db(state->options, "/tmp/testdb", &err);
+    // if (err != NULL) {
+    //   fprintf(stderr, "Destroy fail.\n");
+    //   return;
+    // }
+    // leveldb_free(err); err = NULL;
 
 }
 
@@ -76,6 +76,7 @@ int deliver(const char* request, void *arg, char **return_val, int *return_vsize
             }
             if (*return_val) {
                 *return_vsize = read_len;
+                // printf("Return: %s\n", *return_val);
                 return GOT_VALUE;
             }
             return NOT_FOUND;

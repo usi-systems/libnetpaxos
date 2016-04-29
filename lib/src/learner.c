@@ -140,7 +140,7 @@ void handle_accepted(LearnerCtx *ctx, Message *msg, evutil_socket_t fd) {
                     switch(res) {
                         case SUCCESS: {
                             ctx->res_bufs[ctx->res_idx][0] = SUCCESS;
-                            ctx->out_iovecs[ctx->res_idx].iov_base         = (void *)&ctx->res_bufs[ctx->res_idx];
+                            ctx->out_iovecs[ctx->res_idx].iov_base         = (void *)ctx->res_bufs[ctx->res_idx];
                             ctx->out_iovecs[ctx->res_idx].iov_len          = 1;
                             ctx->out_msgs[ctx->res_idx].msg_hdr.msg_name    = &msg->client;
                             ctx->out_msgs[ctx->res_idx].msg_hdr.msg_namelen = sizeof(struct sockaddr_in);
@@ -151,19 +151,20 @@ void handle_accepted(LearnerCtx *ctx, Message *msg, evutil_socket_t fd) {
                             }
                         case GOT_VALUE: {
                             memcpy(ctx->res_bufs[ctx->res_idx], value, vsize);
-                            ctx->out_iovecs[ctx->res_idx].iov_base         = (void *)&ctx->res_bufs[ctx->res_idx];
+                            ctx->out_iovecs[ctx->res_idx].iov_base         = (void *)ctx->res_bufs[ctx->res_idx];
                             ctx->out_iovecs[ctx->res_idx].iov_len          = vsize;
                             ctx->out_msgs[ctx->res_idx].msg_hdr.msg_name    = &msg->client;
                             ctx->out_msgs[ctx->res_idx].msg_hdr.msg_namelen = sizeof(struct sockaddr_in);
                             ctx->out_msgs[ctx->res_idx].msg_hdr.msg_iov    = &ctx->out_iovecs[ctx->res_idx];
                             ctx->out_msgs[ctx->res_idx].msg_hdr.msg_iovlen = 1;
+                            // printf("In handle_accepted %s\n", ctx->res_bufs[0]);
                             ctx->res_idx++;
                             free(value);
                             break;
                         }
                         case NOT_FOUND: {
                             ctx->res_bufs[ctx->res_idx][0] = NOT_FOUND;
-                            ctx->out_iovecs[ctx->res_idx].iov_base         = (void *)&ctx->res_bufs[ctx->res_idx];
+                            ctx->out_iovecs[ctx->res_idx].iov_base         = (void *)ctx->res_bufs[ctx->res_idx];
                             ctx->out_iovecs[ctx->res_idx].iov_len          = 1;
                             ctx->out_msgs[ctx->res_idx].msg_hdr.msg_name    = &msg->client;
                             ctx->out_msgs[ctx->res_idx].msg_hdr.msg_namelen = sizeof(struct sockaddr_in);
@@ -216,6 +217,7 @@ void on_value(evutil_socket_t fd, short what, void *arg)
         }
         if (ctx->res_idx) {
             int r = sendmmsg(ctx->sock, ctx->out_msgs, ctx->res_idx, 0);
+            // printf("GOT value %s\n", ctx->res_bufs[0]);
             if (r <= 0) {
                 if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
                 }
