@@ -8,12 +8,32 @@
 
 struct app_ctx {
     int mps;
+    char* buffer;
+    struct proposer_state *proposer;
 };
+
+void run_test(struct app_ctx *state);
+
+struct app_ctx *new_app_ctx() {
+    struct app_ctx *state = malloc(sizeof(struct app_ctx));
+    state->mps = 0;
+    state->buffer = malloc(64);
+    bzero(state->buffer, 64);
+    return state;
+}
+
+void free_app_ctx(struct app_ctx *state) {
+    free_proposer(state->proposer);
+    free(state->buffer);
+    free(state);
+}
+
 
 int deliver_response(char* res, int rsize, void* arg_ctx) {
     struct app_ctx *state = arg_ctx;
     state->mps++;
-    printf("on application %s\n", res);
+    // printf("on application %s\n", res);
+    run_test(state);
     return 0;
 }
 
@@ -31,16 +51,21 @@ int craft_message(char** buffer) {
     return size;
 }
 
+void run_test(struct app_ctx *state) {
+    int size = craft_message(&state->buffer);
+    submit(state->buffer, size, state->proposer, deliver_response, state);
+}
+
+
 int main(int argc, char* argv[]) {
     if (argc != 3) {
         printf("%s config eth\n", argv[0]);
         exit(EXIT_FAILURE);
     }
-    struct app_ctx state;
-    struct proposer_state *ctx = make_proposer(argv[1], argv[2]);
-    char *buffer = malloc(64);
-    int size = craft_message(&buffer);
-    submit(buffer, size, ctx, deliver_response, &state);
-    free_proposer(ctx);
+    struct app_ctx *state = new_app_ctx();
+    state->proposer = make_proposer(argv[1], argv[2]);
+    run_test(state);
+    event_base_dispatch(state->proposer->base);
+    free_app_ctx(state);
     return (EXIT_SUCCESS);
 }

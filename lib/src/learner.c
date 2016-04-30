@@ -44,10 +44,6 @@ LearnerCtx *learner_ctx_new(Config conf) {
         ctx->states[i]->paxosval = malloc(PAXOS_VALUE_SIZE);
         bzero(ctx->states[i]->paxosval, PAXOS_VALUE_SIZE);
     }
-    char fname[32];
-    int n = snprintf(fname, sizeof fname, "learner-%d.txt", conf.node_id);
-    if ( n < 0 || n >= sizeof fname )
-        exit(EXIT_FAILURE);
     // ctx->fp = fopen(fname, "w+");
     ctx->msgs = calloc(ctx->conf.vlen, sizeof(struct mmsghdr));
     ctx->iovecs = calloc(ctx->conf.vlen, sizeof(struct iovec));
@@ -136,7 +132,6 @@ void handle_accepted(LearnerCtx *ctx, Message *msg, evutil_socket_t fd) {
                     int res = ctx->deliver(state->paxosval, ctx->app, &value, &vsize);
                     ctx->mps++;
                     ctx->num_packets++;
-                    int n;
                     switch(res) {
                         case SUCCESS: {
                             ctx->res_bufs[ctx->res_idx][0] = SUCCESS;
@@ -207,7 +202,7 @@ void on_value(evutil_socket_t fd, short what, void *arg)
                 printf("received %d messages\n", retval);
                 print_message(&ctx->out_bufs[i]);
             }
-            if (ctx->out_bufs[i].inst > ctx->conf.maxinst) {
+            if (ctx->out_bufs[i].inst > (unsigned int) ctx->conf.maxinst) {
                 if (ctx->conf.verbose) {
                     fprintf(stderr, "State Overflow\n");
                 }

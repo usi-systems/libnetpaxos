@@ -4,7 +4,7 @@ project (NetPaxos)
 include_directories(lib/include)
 include_directories(app/include)
 file(GLOB SOURCE_FILES lib/src/*.c)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -Wall -Wextra -Wno-unused-parameter -ggdb -g")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -Wall -Wextra -Wno-unused-parameter -ggdb -pg")
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_SOURCE_DIR}/cmake/Modules/")
 find_package(LibEvent REQUIRED)
 include_directories(${LIBEVENT_INCLUDE_DIRS})
@@ -15,6 +15,7 @@ message(STATUS "This is CMAKE_CXX_FLAGS " ${CMAKE_CXX_FLAGS})
 
 add_library (Libperf ${SOURCE_FILES})
 target_link_libraries (Libperf ${EXTRA_LIBS})
+SET_TARGET_PROPERTIES( Libperf PROPERTIES COMPILE_FLAGS ${CMAKE_CXX_FLAGS})
 
 # leveldb
 include_directories(/usr/local/include/leveldb/include)

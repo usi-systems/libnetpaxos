@@ -97,7 +97,7 @@ void on_value(evutil_socket_t fd, short what, void *arg) {
     else if (retval > 0) {
         int i;
         for (i = 0; i < retval; i++) {
-            struct sockaddr_in *client = ctx->msgs[i].msg_hdr.msg_name;
+            // struct sockaddr_in *client = ctx->msgs[i].msg_hdr.msg_name;
             // printf("received from %s:%d\n", inet_ntoa(client->sin_addr), ntohs(client->sin_port));
             if (ctx->cur_inst >= ctx->conf.maxinst)
                 ctx->cur_inst = 0;
@@ -133,7 +133,6 @@ int start_coordinator(Config *conf) {
     CoordinatorCtx *ctx = coordinator_new(*conf);
     ctx->base = event_base_new();
     struct hostent *server;
-    int serverlen;
     ctx->acceptor_addr = malloc( sizeof (struct sockaddr_in) );
 
     server = gethostbyname(conf->acceptor_addr);

@@ -59,7 +59,6 @@ void on_response(evutil_socket_t fd, short what, void *arg) {
 void submit(char* msg, int msg_size, struct proposer_state *state, deliver_fn res_cb, void *arg) {
     state->app_ctx = arg;
     state->deliver = res_cb;
-
     Message m;
     initialize_message(&m, phase2a);
     memcpy(m.paxosval, msg, msg_size);
@@ -72,10 +71,6 @@ void submit(char* msg, int msg_size, struct proposer_state *state, deliver_fn re
         perror("ERROR in sendto");
         return;
     }
-    struct event *ev_recv;
-    ev_recv = event_new(state->base, state->sock, EV_READ|EV_PERSIST, on_response, state);
-    event_add(ev_recv, NULL);
-    event_base_dispatch(state->base);
 }
 
 struct proposer_state* proposer_state_new(Config *conf) {
@@ -126,8 +121,12 @@ int init_proposer(struct proposer_state *state, char* interface) {
 
 
 void free_proposer(struct proposer_state *state) {
-    event_base_free(state->base);
     free(state->coordinator);
+    free(state->mine);
+    event_free(state->ev_recv);
+    event_free(state->ev_sigterm);
+    event_free(state->ev_sigint);
+    event_base_free(state->base);
     free(state);
 }
 
@@ -141,13 +140,12 @@ struct proposer_state *make_proposer(char *config_file, char* interface) {
         exit(EXIT_FAILURE);
     }
     free(conf);
-    struct event *ev_sigterm;
-    ev_sigterm = evsignal_new(state->base, SIGTERM, signal_handler, state);
-    struct event *ev_sigint;
-    ev_sigint = evsignal_new(state->base, SIGINT, signal_handler, state);
-    event_add(ev_sigint, NULL);
-    event_add(ev_sigterm, NULL);
-
+    state->ev_recv = event_new(state->base, state->sock, EV_READ|EV_PERSIST, on_response, state);
+    state->ev_sigterm = evsignal_new(state->base, SIGTERM, signal_handler, state);
+    state->ev_sigint = evsignal_new(state->base, SIGINT, signal_handler, state);
+    event_add(state->ev_recv, NULL);
+    event_add(state->ev_sigint, NULL);
+    event_add(state->ev_sigterm, NULL);
     return state;
 }
 

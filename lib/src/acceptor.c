@@ -37,11 +37,6 @@ AcceptorCtx *acceptor_ctx_new(Config conf, int acceptor_id) {
         ctx->states[i]->paxosval = malloc(PAXOS_VALUE_SIZE + 1);
         bzero(ctx->states[i]->paxosval, PAXOS_VALUE_SIZE + 1);
     }
-    char fname[32];
-    int n = snprintf(fname, sizeof fname, "acceptor-%d.txt", acceptor_id);
-    if ( n < 0 || n >= sizeof fname )
-        exit(EXIT_FAILURE);
-    // ctx->fp = fopen(fname, "w+");
     ctx->msgs = calloc(ctx->conf.vlen, sizeof(struct mmsghdr));
     ctx->iovecs = calloc(ctx->conf.vlen, sizeof(struct iovec));
     ctx->out_msgs = calloc(ctx->conf.vlen, sizeof(struct mmsghdr));
@@ -62,7 +57,6 @@ void acceptor_ctx_destroy(AcceptorCtx *ctx) {
     int i;
     event_base_free(ctx->base);
     free(ctx->learner_addr);
-    // fclose(ctx->fp);
     for (i = 0; i < ctx->conf.maxinst; i++) {
         free(ctx->states[i]->paxosval);
         free(ctx->states[i]);
@@ -82,11 +76,6 @@ void signal_handler(evutil_socket_t fd, short what, void *arg) {
     if (what&EV_SIGNAL) {
         printf("Stop acceptor\n");
         event_base_loopbreak(ctx->base);
-        // int i;
-        // for (i = 0; i < ctx->conf.maxinst; i++) {
-        //     fprintf(ctx->fp, "%s\n", ctx->states[i]->paxosval);
-        // }
-        // fprintf(stdout, "num_packets: %d\n", ctx->num_packets);
     }
 }
 
@@ -133,13 +122,13 @@ void on_value(evutil_socket_t fd, short what, void *arg) {
                 printf("Received %d messages\n", retval);
                 print_message(&ctx->out_bufs[i]);
             }
-            if (ctx->out_bufs[i].inst > ctx->conf.maxinst) {
+            if (ctx->out_bufs[i].inst > (unsigned int) ctx->conf.maxinst) {
                 if (ctx->conf.verbose) {
                     fprintf(stderr, "State Overflow\n");
                 }
                 return;
             }
-            int res;
+            int res = 0;
             if (ctx->out_bufs[i].msgtype == phase1a) {
                 res = handle_phase1a(ctx, &ctx->out_bufs[i]);
             }
@@ -181,7 +170,6 @@ int start_acceptor(Config *conf, int acceptor_id) {
     ctx->sock = server_socket;
 
     struct hostent *learner;
-    int learnerlen;
     learner = gethostbyname(conf->learner_addr);
     if (learner == NULL) {
         fprintf(stderr, "ERROR, no such host as %s\n", conf->learner_addr);

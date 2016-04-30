@@ -10,6 +10,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include "netpaxos_utils.h"
+#include <arpa/inet.h>
 
 #ifdef __MACH__
 #include <mach/clock.h>
