@@ -3,13 +3,16 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <time.h>
 #include "proposer.h"
 #include "application.h"
+#include "netpaxos_utils.h"
 
 struct app_ctx {
     int mps;
     char* buffer;
     struct proposer_state *proposer;
+    struct timespec start;
 };
 
 void run_test(struct app_ctx *state);
@@ -33,6 +36,16 @@ int deliver_response(char* res, int rsize, void* arg_ctx) {
     struct app_ctx *state = arg_ctx;
     state->mps++;
     // printf("on application %s\n", res);
+    struct timespec result, end;
+    gettime(&end);
+    int negative = timediff(&result, &end, &state->start);
+    if (negative) {
+        fprintf(stderr, "Latency is negative\n");
+    } else {
+        double latency = (result.tv_sec + ((double)result.tv_nsec) / 1e9);
+        fprintf(stdout, "%.9f\n", latency);
+    }
+
     run_test(state);
     return 0;
 }
@@ -54,6 +67,7 @@ int craft_message(char** buffer) {
 void run_test(struct app_ctx *state) {
     int size = craft_message(&state->buffer);
     submit(state->buffer, size, state->proposer, deliver_response, state);
+    gettime(&state->start);
 }
 
 
