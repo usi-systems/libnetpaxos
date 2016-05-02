@@ -12,7 +12,8 @@ struct application {
 } application;
 
 
-int deliver(struct LearnerCtx *ctx, int inst, struct app_request *req) {
+int deliver(struct LearnerCtx *ctx, int inst, char* value, int size) {
+    struct app_request *req = (struct app_request *) value;
     struct application *state = ctx->app;
     // printf("delivered %s\n", req->value);
     char res[] = "OK";

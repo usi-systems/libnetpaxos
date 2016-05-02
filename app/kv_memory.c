@@ -63,7 +63,8 @@ void delete_entry(struct kv_entry **hashmap, struct kv_entry *entry) {
 }
 
 
-int deliver(struct LearnerCtx *ctx, int inst, struct app_request *req) {
+int deliver(struct LearnerCtx *ctx, int inst, char* value, int size) {
+    struct app_request *req = (struct app_request *) value;
     struct application *state = ctx->app;
     char *request = req->value;
 

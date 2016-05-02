@@ -113,7 +113,7 @@ void handle_accepted(LearnerCtx *ctx, Message *msg, evutil_socket_t fd) {
                     req.value = state->paxosval;
                     req.size = PAXOS_VALUE_SIZE;
                     req.client = &msg->client;
-                    ctx->deliver(ctx, msg->inst, &req);
+                    ctx->deliver(ctx, msg->inst, (char*)&req, sizeof(req));
                     ctx->mps++;
                     ctx->num_packets++;
                 }

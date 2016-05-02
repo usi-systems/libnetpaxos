@@ -33,7 +33,7 @@ struct app_request {
     struct sockaddr_in *client;
 };
 
-typedef int (*deliver_cb)(struct LearnerCtx *ctx, int inst, struct app_request *req);
+typedef int (*deliver_cb)(struct LearnerCtx *ctx, int inst, char *value, int size);
 
 typedef struct LearnerCtx {
     struct event_base *base;

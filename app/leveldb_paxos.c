@@ -60,7 +60,8 @@ void application_destroy(struct application *state) {
 
 }
 
-int deliver(struct LearnerCtx *ctx, int inst, struct app_request *req) {
+int deliver(struct LearnerCtx *ctx, int inst, char* value, int size) {
+    struct app_request *req = (struct app_request *) value;
     struct application *state = ctx->app;
     char *request = req->value;
     if (!request || request[0] == '\0') {
