@@ -66,7 +66,7 @@ int craft_message(char** buffer) {
 
 void run_test(struct app_ctx *state) {
     int size = craft_message(&state->buffer);
-    submit(state->buffer, size, state->proposer, deliver_response, state);
+    submit(state->proposer, state->buffer, size);
     gettime(&state->start);
 }
 
@@ -78,6 +78,8 @@ int main(int argc, char* argv[]) {
     }
     struct app_ctx *state = new_app_ctx();
     state->proposer = make_proposer(argv[1], argv[2]);
+    set_application_ctx(state->proposer, state);
+    register_callback(state->proposer, deliver_response);
     run_test(state);
     event_base_dispatch(state->proposer->base);
     free_app_ctx(state);

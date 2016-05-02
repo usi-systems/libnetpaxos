@@ -56,9 +56,7 @@ void on_response(evutil_socket_t fd, short what, void *arg) {
     }
 }
 
-void submit(char* msg, int msg_size, struct proposer_state *state, deliver_fn res_cb, void *arg) {
-    state->app_ctx = arg;
-    state->deliver = res_cb;
+void submit(struct proposer_state *state, char* msg, int msg_size) {
     Message m;
     initialize_message(&m, phase2a);
     memcpy(m.paxosval, msg, msg_size);
@@ -71,6 +69,14 @@ void submit(char* msg, int msg_size, struct proposer_state *state, deliver_fn re
         perror("ERROR in sendto");
         return;
     }
+}
+
+void set_application_ctx(struct proposer_state *state, void *arg) {
+    state->app_ctx = arg;
+}
+
+void register_callback(struct proposer_state *state, deliver_fn res_cb) {
+    state->deliver = res_cb;
 }
 
 struct proposer_state* proposer_state_new(Config *conf) {

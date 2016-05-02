@@ -18,7 +18,9 @@ struct proposer_state {
     deliver_fn deliver;
     struct event *ev_sigint, *ev_sigterm, *ev_recv;
 };
-void submit(char* msg, int msg_size, struct proposer_state *state, deliver_fn res_cb, void *arg);
+void submit(struct proposer_state *state, char* msg, int msg_size);
+void set_application_ctx(struct proposer_state *state, void *arg);
+void register_callback(struct proposer_state *state, deliver_fn res_cb);
 struct proposer_state *make_proposer(char *config_file, char* interface);
 void free_proposer(struct proposer_state *state);
 #endif
