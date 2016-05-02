@@ -44,17 +44,10 @@ LearnerCtx *learner_ctx_new(Config conf) {
         ctx->states[i]->paxosval = malloc(PAXOS_VALUE_SIZE);
         bzero(ctx->states[i]->paxosval, PAXOS_VALUE_SIZE);
     }
-    // ctx->fp = fopen(fname, "w+");
     ctx->msgs = calloc(ctx->conf.vlen, sizeof(struct mmsghdr));
     ctx->iovecs = calloc(ctx->conf.vlen, sizeof(struct iovec));
-    ctx->out_msgs = calloc(ctx->conf.vlen, sizeof(struct mmsghdr));
-    ctx->out_iovecs = calloc(ctx->conf.vlen, sizeof(struct iovec));
     ctx->out_bufs = calloc(ctx->conf.vlen, sizeof(struct Message));
     ctx->bufs = calloc(ctx->conf.vlen, sizeof(struct Message));
-    ctx->res_bufs = calloc(ctx->conf.vlen, sizeof(char*));
-    for (i = 0; i < ctx->conf.vlen; i++) {
-        ctx->res_bufs[i] = malloc(BUFSIZE + 1);
-    }
     for (i = 0; i < ctx->conf.vlen; i++) {
         ctx->iovecs[i].iov_base          = &ctx->bufs[i];
         ctx->iovecs[i].iov_len           = sizeof(struct Message);
@@ -64,26 +57,22 @@ LearnerCtx *learner_ctx_new(Config conf) {
     return ctx;
 }
 
-void learner_ctx_destroy(LearnerCtx *ctx) {
+void free_learner(LearnerCtx *ctx) {
     int i;
-    // fclose(ctx->fp);
+    event_free(ctx->recv_ev);
+    event_free(ctx->monitor_ev);
+    event_free(ctx->ev_sigterm);
+    event_free(ctx->ev_sigint);
     event_base_free(ctx->base);
     for (i = 0; i < ctx->conf.maxinst; i++) {
         free(ctx->states[i]->paxosval);
         free(ctx->states[i]);
     }
     free(ctx->states);
-
     free(ctx->msgs);
     free(ctx->iovecs);
     free(ctx->bufs);
-    free(ctx->out_msgs);
-    free(ctx->out_iovecs);
     free(ctx->out_bufs);
-    for (i = 0; i < ctx->conf.vlen; i++) {
-        free(ctx->res_bufs[i]);
-    }
-    free(ctx->res_bufs);
     free(ctx);
 }
 
@@ -92,12 +81,6 @@ void signal_handler(evutil_socket_t fd, short what, void *arg) {
     if (what&EV_SIGNAL) {
         printf("Stop learner\n");
         event_base_loopbreak(ctx->base);
-        // disable for now
-        // int i;
-        // for (i = 0; i < ctx->conf.maxinst; i++) {
-        //     fprintf(ctx->fp, "%s\n", ctx->states[i]->paxosval);
-        // }
-        // fprintf(stdout, "num_packets: %d\n", ctx->num_packets);
     }
 }
 
@@ -116,7 +99,6 @@ void handle_accepted(LearnerCtx *ctx, Message *msg, evutil_socket_t fd) {
         if (msg->rnd == state->rnd) {
             int mask = 1 << msg->acptid;
             int exist = state->from & mask;
-
             if (!exist) {
                 state->from = state->from | mask;
                 state->count++;
@@ -127,48 +109,13 @@ void handle_accepted(LearnerCtx *ctx, Message *msg, evutil_socket_t fd) {
                 if (state->count == ctx->maj) { // Chosen value
                     state->finished = 1;        // Marked values has been chosen
                     // printf("deliver %d\n", msg->inst);
-                    char *value;
-                    int vsize;
-                    int res = ctx->deliver(msg->inst, state->paxosval, ctx->app, &value, &vsize);
+                    struct app_request req;
+                    req.value = state->paxosval;
+                    req.size = PAXOS_VALUE_SIZE;
+                    req.client = &msg->client;
+                    ctx->deliver(ctx, msg->inst, &req);
                     ctx->mps++;
                     ctx->num_packets++;
-                    switch(res) {
-                        case SUCCESS: {
-                            ctx->res_bufs[ctx->res_idx][0] = SUCCESS;
-                            ctx->out_iovecs[ctx->res_idx].iov_base         = (void *)ctx->res_bufs[ctx->res_idx];
-                            ctx->out_iovecs[ctx->res_idx].iov_len          = 1;
-                            ctx->out_msgs[ctx->res_idx].msg_hdr.msg_name    = &msg->client;
-                            ctx->out_msgs[ctx->res_idx].msg_hdr.msg_namelen = sizeof(struct sockaddr_in);
-                            ctx->out_msgs[ctx->res_idx].msg_hdr.msg_iov    = &ctx->out_iovecs[ctx->res_idx];
-                            ctx->out_msgs[ctx->res_idx].msg_hdr.msg_iovlen = 1;
-                            ctx->res_idx++;
-                            break;
-                            }
-                        case GOT_VALUE: {
-                            memcpy(ctx->res_bufs[ctx->res_idx], value, vsize);
-                            ctx->out_iovecs[ctx->res_idx].iov_base         = (void *)ctx->res_bufs[ctx->res_idx];
-                            ctx->out_iovecs[ctx->res_idx].iov_len          = vsize;
-                            ctx->out_msgs[ctx->res_idx].msg_hdr.msg_name    = &msg->client;
-                            ctx->out_msgs[ctx->res_idx].msg_hdr.msg_namelen = sizeof(struct sockaddr_in);
-                            ctx->out_msgs[ctx->res_idx].msg_hdr.msg_iov    = &ctx->out_iovecs[ctx->res_idx];
-                            ctx->out_msgs[ctx->res_idx].msg_hdr.msg_iovlen = 1;
-                            // printf("In handle_accepted %s\n", ctx->res_bufs[0]);
-                            ctx->res_idx++;
-                            free(value);
-                            break;
-                        }
-                        case NOT_FOUND: {
-                            ctx->res_bufs[ctx->res_idx][0] = NOT_FOUND;
-                            ctx->out_iovecs[ctx->res_idx].iov_base         = (void *)ctx->res_bufs[ctx->res_idx];
-                            ctx->out_iovecs[ctx->res_idx].iov_len          = 1;
-                            ctx->out_msgs[ctx->res_idx].msg_hdr.msg_name    = &msg->client;
-                            ctx->out_msgs[ctx->res_idx].msg_hdr.msg_namelen = sizeof(struct sockaddr_in);
-                            ctx->out_msgs[ctx->res_idx].msg_hdr.msg_iov    = &ctx->out_iovecs[ctx->res_idx];
-                            ctx->out_msgs[ctx->res_idx].msg_hdr.msg_iovlen = 1;
-                            ctx->res_idx++;
-                            break;
-                        }
-                    }
                 }
             }
         } else if (msg->rnd > state->rnd) {
@@ -210,64 +157,36 @@ void on_value(evutil_socket_t fd, short what, void *arg)
             }
             handle_accepted(ctx, &ctx->out_bufs[i], ctx->sock);
         }
-        if (ctx->res_idx) {
-            int r = sendmmsg(ctx->sock, ctx->out_msgs, ctx->res_idx, 0);
-            // printf("GOT value %s\n", ctx->res_bufs[0]);
-            if (r <= 0) {
-                if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
-                }
-
-                if (errno == ECONNREFUSED) {
-                }
-                perror("sendmmsg()");
-             }
-            if (ctx->conf.verbose) {
-                printf("Send %d messages\n", r);
-            }
-            ctx->res_idx = 0;
-        }
     }
 }
 
 
-int start_learner(Config *conf, int (*deliver_cb)(const int inst, const char* req, void* arg, char **value, int *vsize), void* arg) {
+void set_app_ctx(struct LearnerCtx *learner_ctx, void *arg) {
+    learner_ctx->app = arg;
+}
+void register_deliver_cb(struct LearnerCtx *learner_ctx, deliver_cb deliver) {
+    learner_ctx->deliver = deliver;
+}
+
+LearnerCtx* make_learner(Config *conf) {
     LearnerCtx *ctx = learner_ctx_new(*conf);
-    ctx->app = arg;
-    ctx->deliver = deliver_cb;
     int server_socket = create_server_socket(conf->learner_port);
     addMembership(conf->learner_addr, server_socket);
     ctx->sock = server_socket;
-
-    struct timeval timeout = {1, 0};
-
-    struct event *recv_ev;
-    recv_ev = event_new(ctx->base, ctx->sock, EV_READ|EV_PERSIST, on_value, ctx);
-    struct event *monitor_ev;
-    monitor_ev = event_new(ctx->base, -1, EV_TIMEOUT|EV_PERSIST, monitor, ctx);
-    struct event *ev_sigterm;
-    ev_sigterm = evsignal_new(ctx->base, SIGTERM, signal_handler, ctx);
-    struct event *ev_sigint;
-    ev_sigint = evsignal_new(ctx->base, SIGINT, signal_handler, ctx);
-
+    ctx->timeout.tv_sec = 1;
+    ctx->timeout.tv_usec = 0;
+    ctx->recv_ev = event_new(ctx->base, ctx->sock, EV_READ|EV_PERSIST, on_value, ctx);
+    ctx->monitor_ev = event_new(ctx->base, -1, EV_TIMEOUT|EV_PERSIST, monitor, ctx);
+    ctx->ev_sigterm = evsignal_new(ctx->base, SIGTERM, signal_handler, ctx);
+    ctx->ev_sigint = evsignal_new(ctx->base, SIGINT, signal_handler, ctx);
     event_base_priority_init(ctx->base, 4);
-    event_priority_set(ev_sigint, 0);
-    event_priority_set(ev_sigterm, 1);
-    event_priority_set(monitor_ev, 2);
-    event_priority_set(recv_ev, 3);
-
-    event_add(ev_sigint, NULL);
-    event_add(recv_ev, NULL);
-    event_add(monitor_ev, &timeout);
-    event_add(ev_sigterm, NULL);
-
-    // Comment the line below for valgrind check
-    event_base_dispatch(ctx->base);
-    event_free(recv_ev);
-    event_free(monitor_ev);
-    event_free(ev_sigterm);
-    event_free(ev_sigint);
-
-    learner_ctx_destroy(ctx);
-   
-    return EXIT_SUCCESS;
+    event_priority_set(ctx->ev_sigint, 0);
+    event_priority_set(ctx->ev_sigterm, 1);
+    event_priority_set(ctx->monitor_ev, 2);
+    event_priority_set(ctx->recv_ev, 3);
+    event_add(ctx->ev_sigint, NULL);
+    event_add(ctx->recv_ev, NULL);
+    event_add(ctx->monitor_ev, &ctx->timeout);
+    event_add(ctx->ev_sigterm, NULL);
+    return ctx;
 }

@@ -55,6 +55,16 @@ int compare_ts(struct timespec *time1, struct timespec *time2) {
             return (0) ;                /* Equal */
 }
 
+int create_socket() {
+    int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sockfd < 0) {
+        perror("cannot create socket");
+        exit(EXIT_FAILURE);
+    }
+    return sockfd;
+}
+
+
 int create_server_socket(int port) {
     int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
     if (sockfd < 0) {
@@ -113,5 +123,17 @@ void setRcvBuf(int sockfd) {
     {
         perror("set SO_RCVBUF");
         exit(EXIT_FAILURE);
+    }
+}
+
+void send_msg(int sock, char* msg, int size, struct sockaddr_in *remote) {
+    // printf("sock %d\n", sock);
+    // printf("Msg %s\n", msg);
+    // printf("size %d\n", size);
+    // printf("address %s, port %d\n", inet_ntoa(remote->sin_addr), ntohs(remote->sin_port));
+    int n = sendto(sock, msg, size, 0, (struct sockaddr*) remote, sizeof(*remote));
+    if (n < 0) {
+        perror("ERROR in sendto");
+        return;
     }
 }

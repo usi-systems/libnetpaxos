@@ -14,6 +14,10 @@ enum return_code {
     FAILED
 };
 
+typedef struct LearnerCtx LearnerCtx;
+typedef struct paxos_state paxos_state;
+typedef struct app_request app_request;
+
 typedef struct paxos_state {
     int rnd;
     int count;
@@ -23,8 +27,22 @@ typedef struct paxos_state {
 } paxos_state;
 
 
+struct app_request {
+    char* value; 
+    int size;
+    struct sockaddr_in *client;
+};
+
+typedef int (*deliver_cb)(struct LearnerCtx *ctx, int inst, struct app_request *req);
+
 typedef struct LearnerCtx {
     struct event_base *base;
+    struct event *recv_ev;
+    struct event *monitor_ev;
+    struct event *ev_sigterm;
+    struct event *ev_sigint;
+    struct timeval timeout;
+
     Config conf;
     int mps;
     int num_packets;
@@ -33,17 +51,16 @@ typedef struct LearnerCtx {
     int res_idx;
     paxos_state* *states;
     FILE *fp;
-    int (*deliver)(const int inst, const char* req, void* arg, char **value, int *vsize);
+    deliver_cb deliver;
     void *app;
     struct mmsghdr *msgs;
     struct iovec *iovecs;
     Message *bufs;
-    struct mmsghdr *out_msgs;
-    struct iovec *out_iovecs;
     Message *out_bufs;
-    char **res_bufs;
 } LearnerCtx;
 
-int start_learner(Config *conf, int (*deliver_cb)(const int inst, const char* req, void* arg, char **value, int *vsize), void* arg);
-
+LearnerCtx* make_learner(Config *conf);
+void set_app_ctx(struct LearnerCtx *learner_ctx, void *arg);
+void register_deliver_cb(struct LearnerCtx *learner_ctx, deliver_cb deliver);
+void free_learner(LearnerCtx *ctx);
 #endif

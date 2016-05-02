@@ -6,10 +6,15 @@
 #include "uthash.h"
 #include <stdio.h>
 #include <unistd.h>
-
+/* inet_ntoa */
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+/* end inet_ntoa */
 #include "application.h"
 #include "learner.h"
 #include "config.h"
+#include "netpaxos_utils.h"
 
 struct kv_entry {
     const char *key;                    /* key */
@@ -18,12 +23,14 @@ struct kv_entry {
 };
 
 struct application {
+    int sock;
     struct kv_entry *hashmap;
 } application;
 
 struct application* application_new() {
     struct application *state = malloc(sizeof(struct application));
     state->hashmap = NULL;    /* important! initialize to NULL */
+    state->sock = create_socket();
     return state;
 }
 
@@ -55,27 +62,35 @@ void delete_entry(struct kv_entry **hashmap, struct kv_entry *entry) {
     free(entry);              /* optional; it's up to you! */
 }
 
-int deliver(const int inst, const char* request, void *arg, char **return_val, int *return_vsize) {
-    struct application *state = arg;
+
+int deliver(struct LearnerCtx *ctx, int inst, struct app_request *req) {
+    struct application *state = ctx->app;
+    char *request = req->value;
+
     if (!request || request[0] == '\0') {
         return FAILED;
     }
     char op = request[0];
+
     switch(op) {
         case PUT: {
             unsigned char ksize = request[1];
             unsigned char vsize = request[2];
             add_entry(&state->hashmap, &request[3], ksize, &request[3+ksize], vsize);
+            int res = SUCCESS;
+            send_msg(state->sock, (char*)&res, 1, req->client);
             return SUCCESS;
         }
         case GET: {
             unsigned char ksize = request[1];
             struct kv_entry *entry = find_entry(&state->hashmap, &request[3], ksize);
             if (entry) {
-                *return_val = strdup(entry->value);
-                *return_vsize = strlen(entry->value);
+                int vsize = strlen(entry->value);
+                send_msg(state->sock, entry->value, vsize, req->client);
                 return GOT_VALUE;
             }
+            int res = NOT_FOUND;
+            send_msg(state->sock, (char*)&res, 1, req->client);
             return NOT_FOUND;
         }
         case DELETE: {
@@ -83,10 +98,14 @@ int deliver(const int inst, const char* request, void *arg, char **return_val, i
             struct kv_entry *entry = find_entry(&state->hashmap, &request[3], ksize);
             if (entry) {
                 delete_entry(&state->hashmap, entry);
+                int res = SUCCESS;
+                send_msg(state->sock,  (char*)&res, 1, req->client);
                 return SUCCESS;
             }
         }
     }
+    int res;
+    send_msg(state->sock,  (char*)&res, 1, req->client);
     return INVALID_OP;
 }
 
@@ -99,7 +118,11 @@ int main(int argc, char* argv[]) {
     struct application *state = application_new();
     Config *conf = parse_conf(argv[1]);
     conf->node_id = atoi(argv[2]);
-    start_learner(conf, deliver, state);
+    LearnerCtx *learner_ctx = make_learner(conf);
+    set_app_ctx(learner_ctx, state);
+    register_deliver_cb(learner_ctx, deliver);
+    event_base_dispatch(learner_ctx->base);
+    free_learner(learner_ctx);
     application_destroy(state);
     free(conf);
     return (EXIT_SUCCESS);

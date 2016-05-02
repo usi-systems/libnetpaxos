@@ -39,6 +39,11 @@ struct application* application_new() {
 void application_destroy(struct application *state) {
     // char *err = NULL;
     leveldb_close(state->db);
+    leveldb_writeoptions_destroy(state->woptions);
+    leveldb_readoptions_destroy(state->roptions);
+    leveldb_options_destroy(state->options);
+    free(state);
+
     // leveldb_destroy_db(state->options, "/tmp/testdb", &err);
     // if (err != NULL) {
     //   fprintf(stderr, "Destroy fail.\n");
@@ -48,8 +53,9 @@ void application_destroy(struct application *state) {
 
 }
 
-int deliver(const int inst, const char* request, void *arg, char **return_val, int *return_vsize) {
-    struct application *state = arg;
+int deliver(struct LearnerCtx *ctx, int inst, struct app_request *req) {
+    struct application *state = ctx->app;
+    char *request = req->value;
     if (!request || request[0] == '\0') {
         return FAILED;
     }
@@ -69,13 +75,13 @@ int deliver(const int inst, const char* request, void *arg, char **return_val, i
         }
         case GET: {
             unsigned char ksize = request[1];
-             *return_val = leveldb_get(state->db, state->roptions, &request[3], ksize, &read_len, &err);
+            char *return_val = leveldb_get(state->db, state->roptions, &request[3], ksize, &read_len, &err);
             if (err != NULL) {
                 leveldb_free(err); err = NULL;
                 return FAILED;
             }
             if (*return_val) {
-                *return_vsize = read_len;
+                // int return_vsize = read_len;
                 // printf("Return: %s\n", *return_val);
                 return GOT_VALUE;
             }
@@ -103,7 +109,11 @@ int main(int argc, char* argv[]) {
     }
     Config *conf = parse_conf(argv[1]);
     conf->node_id = atoi(argv[2]);
-    start_learner(conf, deliver, state);
+    LearnerCtx *learner_ctx = make_learner(conf);
+    set_app_ctx(learner_ctx, state);
+    register_deliver_cb(learner_ctx, deliver);
+    event_base_dispatch(learner_ctx->base);
+    free_learner(learner_ctx);
     application_destroy(state);
     free(conf);
     return (EXIT_SUCCESS);

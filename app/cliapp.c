@@ -35,7 +35,7 @@ void free_app_ctx(struct app_ctx *state) {
 int deliver_response(char* res, int rsize, void* arg_ctx) {
     struct app_ctx *state = arg_ctx;
     state->mps++;
-    // printf("on application %s\n", res);
+    printf("on application %s\n", res);
     struct timespec result, end;
     gettime(&end);
     int negative = timediff(&result, &end, &state->start);
@@ -53,7 +53,8 @@ int deliver_response(char* res, int rsize, void* arg_ctx) {
 int craft_message(char** buffer) {
     char key[] = "abcde123456789";
     char value[] = "zxcvbnmasdfghj";
-    (*buffer)[0] = GET;
+
+    (*buffer)[0] = (random() % 2) ? PUT : GET;
     char ksize = (unsigned char) strlen(key);
     char vsize = (unsigned char) strlen(value);
     (*buffer)[1] = ksize;
