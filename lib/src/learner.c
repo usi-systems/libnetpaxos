@@ -129,7 +129,7 @@ void handle_accepted(LearnerCtx *ctx, Message *msg, evutil_socket_t fd) {
                     // printf("deliver %d\n", msg->inst);
                     char *value;
                     int vsize;
-                    int res = ctx->deliver(state->paxosval, ctx->app, &value, &vsize);
+                    int res = ctx->deliver(msg->inst, state->paxosval, ctx->app, &value, &vsize);
                     ctx->mps++;
                     ctx->num_packets++;
                     switch(res) {
@@ -230,7 +230,7 @@ void on_value(evutil_socket_t fd, short what, void *arg)
 }
 
 
-int start_learner(Config *conf, int (*deliver_cb)(const char* req, void* arg, char **value, int *vsize), void* arg) {
+int start_learner(Config *conf, int (*deliver_cb)(const int inst, const char* req, void* arg, char **value, int *vsize), void* arg) {
     LearnerCtx *ctx = learner_ctx_new(*conf);
     ctx->app = arg;
     ctx->deliver = deliver_cb;

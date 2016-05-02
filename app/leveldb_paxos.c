@@ -48,7 +48,7 @@ void application_destroy(struct application *state) {
 
 }
 
-int deliver(const char* request, void *arg, char **return_val, int *return_vsize) {
+int deliver(const int inst, const char* request, void *arg, char **return_val, int *return_vsize) {
     struct application *state = arg;
     if (!request || request[0] == '\0') {
         return FAILED;

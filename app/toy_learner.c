@@ -65,7 +65,8 @@ void application_destroy(struct application *state) {
 
 }
 
-int deliver(const char* request, void *arg, char **return_val, int *return_vsize) {
+int deliver(const int inst, const char* request, void *arg, char **return_val, int *return_vsize) {
+    printf("deliver %d: %s\n", inst, request);
     struct application *state = arg;
     if (!request || request[0] == '\0') {
         return FAILED;
@@ -218,7 +219,7 @@ void handle_accepted(LearnerCtx *ctx, Message *msg, evutil_socket_t fd) {
             // printf("deliver %d\n", msg->inst);
             char *value;
             int vsize;
-            int res = ctx->deliver(state->paxosval, ctx->app, &value, &vsize);
+            int res = ctx->deliver(msg->inst, state->paxosval, ctx->app, &value, &vsize);
             ctx->mps++;
             ctx->num_packets++;
             switch(res) {
@@ -317,7 +318,7 @@ void on_value(evutil_socket_t fd, short what, void *arg)
 }
 
 
-int start_learner(Config *conf, int (*deliver_cb)(const char* req, void* arg, char **value, int *vsize), void* arg) {
+int start_learner(Config *conf, int (*deliver_cb)(const int inst, const char* req, void* arg, char **value, int *vsize), void* arg) {
     LearnerCtx *ctx = learner_ctx_new(*conf);
     ctx->app = arg;
     ctx->deliver = deliver_cb;

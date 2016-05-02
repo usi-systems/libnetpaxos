@@ -55,7 +55,7 @@ void delete_entry(struct kv_entry **hashmap, struct kv_entry *entry) {
     free(entry);              /* optional; it's up to you! */
 }
 
-int deliver(const char* request, void *arg, char **return_val, int *return_vsize) {
+int deliver(const int inst, const char* request, void *arg, char **return_val, int *return_vsize) {
     struct application *state = arg;
     if (!request || request[0] == '\0') {
         return FAILED;

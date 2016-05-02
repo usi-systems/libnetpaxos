@@ -33,7 +33,7 @@ typedef struct LearnerCtx {
     int res_idx;
     paxos_state* *states;
     FILE *fp;
-    int (*deliver)(const char* req, void* arg, char **value, int *vsize);
+    int (*deliver)(const int inst, const char* req, void* arg, char **value, int *vsize);
     void *app;
     struct mmsghdr *msgs;
     struct iovec *iovecs;
@@ -44,6 +44,6 @@ typedef struct LearnerCtx {
     char **res_bufs;
 } LearnerCtx;
 
-int start_learner(Config *conf, int (*deliver_cb)(const char* req, void* arg, char **value, int *vsize), void* arg);
+int start_learner(Config *conf, int (*deliver_cb)(const int inst, const char* req, void* arg, char **value, int *vsize), void* arg);
 
 #endif
