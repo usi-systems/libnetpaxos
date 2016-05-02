@@ -4,12 +4,18 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
-
+/* inet_ntoa */
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+/* end inet_ntoa */
 #include "learner.h"
 #include "config.h"
 #include "application.h"
+#include "netpaxos_utils.h"
 
 struct application {
+    int sock;
     leveldb_t *db;
     leveldb_options_t *options;
     leveldb_readoptions_t *roptions;
@@ -18,6 +24,7 @@ struct application {
 
 struct application* application_new() {
     struct application *state = malloc(sizeof(struct application));
+    state->sock = create_socket();
     char *err = NULL;
     /******************************************/
     /* OPEN DB */
@@ -71,6 +78,8 @@ int deliver(struct LearnerCtx *ctx, int inst, struct app_request *req) {
                 leveldb_free(err); err = NULL;
                 return FAILED;
             }
+            int res = SUCCESS;
+            send_msg(state->sock, (char*)&res, 1, req->client);
             return SUCCESS;
         }
         case GET: {
@@ -81,10 +90,12 @@ int deliver(struct LearnerCtx *ctx, int inst, struct app_request *req) {
                 return FAILED;
             }
             if (*return_val) {
-                // int return_vsize = read_len;
-                // printf("Return: %s\n", *return_val);
+                send_msg(state->sock, return_val, read_len, req->client);
+                free(return_val);
                 return GOT_VALUE;
             }
+            int res = NOT_FOUND;
+            send_msg(state->sock, (char*)&res, 1, req->client);
             return NOT_FOUND;
         }
         case DELETE: {
@@ -94,9 +105,13 @@ int deliver(struct LearnerCtx *ctx, int inst, struct app_request *req) {
                 leveldb_free(err); err = NULL;
                 return FAILED;
             }
+            int res = SUCCESS;
+            send_msg(state->sock, (char*)&res, 1, req->client);
             return SUCCESS;
         }
     }
+    int res = INVALID_OP;
+    send_msg(state->sock, (char*)&res, 1, req->client);
     return INVALID_OP;
 }
 

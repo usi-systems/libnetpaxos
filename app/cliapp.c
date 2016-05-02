@@ -35,7 +35,7 @@ void free_app_ctx(struct app_ctx *state) {
 int deliver_response(char* res, int rsize, void* arg_ctx) {
     struct app_ctx *state = arg_ctx;
     state->mps++;
-    printf("on application %s\n", res);
+    // printf("on application %s\n", res);
     struct timespec result, end;
     gettime(&end);
     int negative = timediff(&result, &end, &state->start);
