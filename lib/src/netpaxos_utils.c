@@ -55,12 +55,22 @@ int compare_ts(struct timespec *time1, struct timespec *time2) {
             return (0) ;                /* Equal */
 }
 
+void disableChecksum(int sockfd) {
+    int enable = 0;
+    if ( setsockopt(sockfd, SOL_SOCKET, SO_NO_CHECK, &enable, sizeof(int)) == -1 )
+    {
+        perror("set SO_NO_CHECK");
+        exit(EXIT_FAILURE);
+    }
+}
+
 int create_socket() {
     int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
     if (sockfd < 0) {
         perror("cannot create socket");
         exit(EXIT_FAILURE);
     }
+    disableChecksum(sockfd);
     return sockfd;
 }
 
@@ -83,6 +93,7 @@ int create_server_socket(int port) {
     setReuseAddr(sockfd);
     setRcvBuf(sockfd);
     setReusePort(sockfd);
+    disableChecksum(sockfd);
     printf("Listening on port %d.\n", port);
     return sockfd;
 }
