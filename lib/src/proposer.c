@@ -100,10 +100,6 @@ int paxos_send (struct proposer_state *ctx, char *msg, int msglen) {
     if (sendto (ctx->rawsock, ctx->datagram, iph->tot_len,  0, (struct sockaddr *) ctx->dest, sizeof (*ctx->dest)) < 0) {
         perror("sendto failed");
     }
-    //Data send successfully
-    else {
-        printf ("Packet Send. Length : %d \n" , iph->tot_len);
-    }
     return 0;
 }
 

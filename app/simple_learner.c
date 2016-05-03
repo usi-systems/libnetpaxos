@@ -9,13 +9,17 @@
 
 struct application {
     int sock;
+    Config *conf;
 } application;
 
 
 int deliver(struct LearnerCtx *ctx, int inst, char* value, int size) {
     struct app_request *req = (struct app_request *) value;
     struct application *state = ctx->app;
-    // printf("delivered %s\n", req->value);
+    if (state->conf->verbose) {
+        printf("instance %d: %s\n", inst, req->value);
+    }
+
     char res[] = "OK";
     send_msg(state->sock, res, 2, req->client);
     return 0;
@@ -30,12 +34,13 @@ int main(int argc, char* argv[]) {
     conf->node_id = atoi(argv[2]);
     struct application *app = malloc(sizeof(struct application));
     app->sock = create_socket();
+    app->conf = conf;
     LearnerCtx *learner_ctx = make_learner(conf);
     set_app_ctx(learner_ctx, app);
     register_deliver_cb(learner_ctx, deliver);
     event_base_dispatch(learner_ctx->base);
     free_learner(learner_ctx);
-    free(app);
     free(conf);
+    free(app);
     return (EXIT_SUCCESS);
 }
