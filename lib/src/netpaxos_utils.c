@@ -55,13 +55,42 @@ int compare_ts(struct timespec *time1, struct timespec *time2) {
             return (0) ;                /* Equal */
 }
 
-void disableChecksum(int sockfd) {
-    int enable = 0;
-    if ( setsockopt(sockfd, SOL_SOCKET, SO_NO_CHECK, &enable, sizeof(int)) == -1 )
-    {
-        perror("set SO_NO_CHECK");
-        exit(EXIT_FAILURE);
+
+/*
+    Generic checksum calculation function
+*/
+unsigned short csum(unsigned short *ptr, int nbytes)
+{
+    register long sum;
+    unsigned short oddbyte;
+    register short answer;
+
+    sum=0;
+    while(nbytes>1) {
+        sum+=*ptr++;
+        nbytes-=2;
     }
+    if(nbytes==1) {
+        oddbyte=0;
+        *((u_char*)&oddbyte)=*(u_char*)ptr;
+        sum+=oddbyte;
+    }
+
+    sum = (sum>>16)+(sum & 0xffff);
+    sum = sum + (sum>>16);
+    answer=(short)~sum;
+    return(answer);
+}
+
+
+int create_rawsock() {
+    int s = socket (AF_INET, SOCK_RAW, IPPROTO_RAW);
+    if(s == -1)
+    {
+        perror("Failed to create raw socket");
+        exit(1);
+    }
+    return s;
 }
 
 int create_socket() {
@@ -70,7 +99,6 @@ int create_socket() {
         perror("cannot create socket");
         exit(EXIT_FAILURE);
     }
-    disableChecksum(sockfd);
     return sockfd;
 }
 
@@ -93,7 +121,6 @@ int create_server_socket(int port) {
     setReuseAddr(sockfd);
     setRcvBuf(sockfd);
     setReusePort(sockfd);
-    disableChecksum(sockfd);
     printf("Listening on port %d.\n", port);
     return sockfd;
 }

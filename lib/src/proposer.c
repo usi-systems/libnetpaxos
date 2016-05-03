@@ -25,6 +25,8 @@
 #include "application.h"
 #include "message.h"
 #include "proposer.h"
+#include <netinet/udp.h>   //Provides declarations for udp header
+#include <netinet/ip.h>    //Provides declarations for ip header
 
 void signal_handler(evutil_socket_t fd, short what, void *arg) {
     struct proposer_state *state = (struct proposer_state*) arg;
@@ -33,7 +35,6 @@ void signal_handler(evutil_socket_t fd, short what, void *arg) {
         printf("Stop proposer\n");
     }
 }
-
 
 void on_response(evutil_socket_t fd, short what, void *arg) {
     struct proposer_state *state = arg;
@@ -56,6 +57,56 @@ void on_response(evutil_socket_t fd, short what, void *arg) {
     }
 }
 
+void init_rawsock (struct proposer_state *ctx, struct sockaddr_in *mine, struct sockaddr_in *dest)
+{
+    //zero out the packet buffer
+    memset (ctx->datagram, 0, BUFSIZE);
+    //IP header
+    struct iphdr *iph = (struct iphdr *) ctx->datagram;
+    //UDP header
+    struct udphdr *udph = (struct udphdr *) (ctx->datagram + sizeof (struct ip));
+    //Fill in the IP Header
+    iph->ihl = 5;
+    iph->version = 4;
+    iph->tos = 0;
+    iph->id = htonl (54321); //Id of this packet
+    iph->frag_off = 0;
+    iph->ttl = 255;
+    iph->protocol = IPPROTO_UDP;
+    iph->check = 0;      //Set to 0 before calculating checksum
+    iph->saddr = mine->sin_addr.s_addr;    //Spoof the source ip address
+    iph->daddr = dest->sin_addr.s_addr;
+    //UDP header
+    udph->source = mine->sin_port;
+    udph->dest = dest->sin_port;
+    udph->check = 0; //leave checksum 0 now, filled later by pseudo header
+}
+
+
+int paxos_send (struct proposer_state *ctx, char *msg, int msglen) {
+    char *data;
+    //Data part
+    data = ctx->datagram + sizeof(struct iphdr) + sizeof(struct udphdr);
+    memcpy(data , msg, msglen);
+    //Ip checksum
+    struct iphdr *iph = (struct iphdr *) ctx->datagram;
+    iph->check = csum ((unsigned short *) ctx->datagram, iph->tot_len);
+    iph->tot_len = sizeof (struct iphdr) + sizeof (struct udphdr) + msglen;
+    //UDP header
+    struct udphdr *udph = (struct udphdr *) (ctx->datagram + sizeof (struct ip));
+    udph->len = htons(8 + msglen); //udp header size
+    udph->check = 0; //leave checksum 0 now, filled later by pseudo header
+
+    if (sendto (ctx->rawsock, ctx->datagram, iph->tot_len,  0, (struct sockaddr *) ctx->dest, sizeof (*ctx->dest)) < 0) {
+        perror("sendto failed");
+    }
+    //Data send successfully
+    else {
+        printf ("Packet Send. Length : %d \n" , iph->tot_len);
+    }
+    return 0;
+}
+
 void submit(struct proposer_state *state, char* msg, int msg_size) {
     Message m;
     initialize_message(&m, phase2a);
@@ -63,12 +114,14 @@ void submit(struct proposer_state *state, char* msg, int msg_size) {
     m.paxosval[msg_size] = '\0';
     m.client = *state->mine;
     pack(&m);
-    socklen_t serverlen = sizeof(*state->coordinator);
-    int n = sendto(state->sock, &m, sizeof(Message), 0, (struct sockaddr*) state->coordinator, serverlen);
-    if (n < 0) {
-        perror("ERROR in sendto");
-        return;
-    }
+    paxos_send(state, (char*)&m, sizeof(m));
+
+    // socklen_t serverlen = sizeof(*state->dest);
+    // int n = sendto(state->sock, &m, sizeof(Message), 0, (struct sockaddr*) state->dest, serverlen);
+    // if (n < 0) {
+    //     perror("ERROR in sendto");
+    //     return;
+    // }
 }
 
 void set_application_ctx(struct proposer_state *state, void *arg) {
@@ -90,6 +143,7 @@ int init_proposer(struct proposer_state *state, char* interface) {
     struct sockaddr_in *coordinator = malloc(sizeof (struct sockaddr_in));
     state->mine = malloc(sizeof (struct sockaddr_in));
     socklen_t len = sizeof(struct sockaddr_in);
+    state->rawsock = create_rawsock();
     int sock = create_server_socket(0);
     if (sock < 0) {
         perror("cannot create socket");
@@ -121,13 +175,15 @@ int init_proposer(struct proposer_state *state, char* interface) {
     bcopy((char *)server->h_addr,
       (char *)&(coordinator->sin_addr.s_addr), server->h_length);
     coordinator->sin_port = htons(state->conf.coordinator_port);
-    state->coordinator = coordinator;
+    state->dest = coordinator;
+    init_rawsock(state, state->mine, state->dest);
+
     return 0;
 }
 
 
 void free_proposer(struct proposer_state *state) {
-    free(state->coordinator);
+    free(state->dest);
     free(state->mine);
     event_free(state->ev_recv);
     event_free(state->ev_sigterm);
