@@ -99,8 +99,8 @@ void on_value(evutil_socket_t fd, short what, void *arg) {
         for (i = 0; i < retval; i++) {
             // struct sockaddr_in *client = ctx->msgs[i].msg_hdr.msg_name;
             // printf("received from %s:%d\n", inet_ntoa(client->sin_addr), ntohs(client->sin_port));
-            if (ctx->cur_inst >= ctx->conf.maxinst)
-                ctx->cur_inst = 0;
+            // if (ctx->cur_inst >= ctx->conf.maxinst)
+                // ctx->cur_inst = 0;
             memcpy(&ctx->out_bufs[i], &ctx->bufs[i], ctx->msgs[i].msg_len);
             unpack(&ctx->out_bufs[i]);
             ctx->out_bufs[i].inst = ctx->cur_inst++;

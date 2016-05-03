@@ -149,10 +149,11 @@ void on_value(evutil_socket_t fd, short what, void *arg)
                 printf("received %d messages\n", retval);
                 print_message(&ctx->out_bufs[i]);
             }
-            if (ctx->out_bufs[i].inst > (unsigned int) ctx->conf.maxinst) {
+            if (ctx->out_bufs[i].inst >= (unsigned int) ctx->conf.maxinst) {
                 if (ctx->conf.verbose) {
-                    fprintf(stderr, "State Overflow\n");
+                    fprintf(stderr, "Reach max instance\n");
                 }
+                raise(SIGTERM);
                 return;
             }
             handle_accepted(ctx, &ctx->out_bufs[i], ctx->sock);
