@@ -12,7 +12,6 @@ struct app_ctx {
     int mps;
     char* buffer;
     struct proposer_state *proposer;
-    struct timespec start;
 };
 
 void run_test(struct app_ctx *state);
@@ -38,16 +37,6 @@ int deliver_response(char* res, int rsize, void* arg_ctx) {
     if (state->proposer->conf.verbose) {
         printf("on application %s\n", res);
     }
-    struct timespec result, end;
-    gettime(&end);
-    int negative = timediff(&result, &end, &state->start);
-    if (negative) {
-        fprintf(stderr, "Latency is negative\n");
-    } else {
-        double latency = (result.tv_sec + ((double)result.tv_nsec) / 1e9);
-        fprintf(stdout, "%.9f\n", latency);
-    }
-
     run_test(state);
     return 0;
 }
@@ -70,7 +59,6 @@ int craft_message(char** buffer) {
 void run_test(struct app_ctx *state) {
     int size = craft_message(&state->buffer);
     submit(state->proposer, state->buffer, size);
-    gettime(&state->start);
 }
 
 

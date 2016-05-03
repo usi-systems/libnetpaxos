@@ -28,6 +28,8 @@
 #include <netinet/udp.h>   //Provides declarations for udp header
 #include <netinet/ip.h>    //Provides declarations for ip header
 
+int retry (struct proposer_state *ctx);
+
 void signal_handler(evutil_socket_t fd, short what, void *arg) {
     struct proposer_state *state = (struct proposer_state*) arg;
     if (what&EV_SIGNAL) {
@@ -49,11 +51,21 @@ void on_response(evutil_socket_t fd, short what, void *arg) {
           return;
         }
         recvbuf[n] = '\0';
-
+        struct timespec result, end;
+        gettime(&end);
+        int negative = timediff(&result, &end, &state->start);
+        if (negative) {
+            fprintf(stderr, "Latency is negative\n");
+        } else {
+            double latency = (result.tv_sec + ((double)result.tv_nsec) / 1e9);
+            fprintf(stdout, "%.9f\n", latency);
+        }
         if (state->conf.verbose) {
             printf("on value: %s: %d length, addr_length: %d\n", recvbuf, n, remote_len);
         }
         state->deliver(recvbuf, n, state->app_ctx);
+    } else if (what&EV_TIMEOUT) {
+        retry(state);
     }
 }
 
@@ -82,6 +94,14 @@ void init_rawsock (struct proposer_state *ctx, struct sockaddr_in *mine, struct 
     udph->check = 0; //leave checksum 0 now, filled later by pseudo header
 }
 
+int retry (struct proposer_state *ctx) {
+    struct iphdr *iph = (struct iphdr *) ctx->datagram;
+    if (sendto (ctx->rawsock, ctx->datagram, iph->tot_len,  0, (struct sockaddr *) ctx->dest, sizeof (*ctx->dest)) < 0) {
+        perror("sendto failed");
+    }
+    gettime(&ctx->start);
+    return 0;
+}
 
 int paxos_send (struct proposer_state *ctx, char *msg, int msglen) {
     char *data;
@@ -100,6 +120,7 @@ int paxos_send (struct proposer_state *ctx, char *msg, int msglen) {
     if (sendto (ctx->rawsock, ctx->datagram, iph->tot_len,  0, (struct sockaddr *) ctx->dest, sizeof (*ctx->dest)) < 0) {
         perror("sendto failed");
     }
+    gettime(&ctx->start);
     return 0;
 }
 
@@ -198,10 +219,11 @@ struct proposer_state *make_proposer(char *config_file, char* interface) {
         exit(EXIT_FAILURE);
     }
     free(conf);
-    state->ev_recv = event_new(state->base, state->sock, EV_READ|EV_PERSIST, on_response, state);
+    struct timeval timeout = {0, 100000};
+    state->ev_recv = event_new(state->base, state->sock, EV_READ|EV_PERSIST|EV_TIMEOUT, on_response, state);
     state->ev_sigterm = evsignal_new(state->base, SIGTERM, signal_handler, state);
     state->ev_sigint = evsignal_new(state->base, SIGINT, signal_handler, state);
-    event_add(state->ev_recv, NULL);
+    event_add(state->ev_recv, &timeout);
     event_add(state->ev_sigint, NULL);
     event_add(state->ev_sigterm, NULL);
     return state;
