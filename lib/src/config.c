@@ -8,8 +8,32 @@ void print_config(Config *conf) {
         conf->role, conf->second, conf->microsecond, conf->verbose, conf->learner_addr);
 }
 
+void init_conf(Config *conf) {
+    conf->role = 0;
+    conf->second = 0;
+    conf->microsecond = 0;
+    conf->verbose = 0;
+    conf->learner_port = 0;
+    conf->coordinator_port = 0;
+    conf->proposer_port = 0;
+    conf->acceptor_port = 0;
+    conf->maxinst = 0;
+    conf->enable_paxos = 0;
+    conf->outstanding = 0;
+    conf->paxos_msgtype = 0;
+    conf->padsize = 0;
+    conf->node_id = 0;
+    conf->vlen = 0;
+    conf->num_acceptors = 0;
+    bzero(conf->learner_addr, 64);
+    bzero(conf->proposer_addr, 64);
+    bzero(conf->acceptor_addr, 64);
+    bzero(conf->coordinator_addr, 64);
+}
+
 Config *parse_conf(char *config_file) {
     Config *conf = malloc(sizeof(Config));
+    init_conf(conf);
     FILE *fp = fopen(config_file, "r");
     char *line = NULL;
     size_t len = 0;

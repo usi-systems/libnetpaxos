@@ -15,7 +15,7 @@ struct proposer_state {
     int sock;
     struct sockaddr_in *mine;
     struct event_base *base;
-    struct Config conf;
+    struct Config *conf;
     void *app_ctx;
     deliver_fn deliver;
     struct event *ev_sigint, *ev_sigterm, *ev_recv;

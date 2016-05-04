@@ -60,7 +60,7 @@ void on_response(evutil_socket_t fd, short what, void *arg) {
             double latency = (result.tv_sec + ((double)result.tv_nsec) / 1e9);
             fprintf(stdout, "%.9f\n", latency);
         }
-        if (state->conf.verbose) {
+        if (state->conf->verbose) {
             printf("on value: %s: %d length, addr_length: %d\n", recvbuf, n, remote_len);
         }
         state->deliver(recvbuf, n, state->app_ctx);
@@ -151,7 +151,7 @@ void register_callback(struct proposer_state *state, deliver_fn res_cb) {
 
 struct proposer_state* proposer_state_new(Config *conf) {
     struct proposer_state *state = malloc(sizeof(struct proposer_state));
-    state->conf = *conf;
+    state->conf = conf;
     state->base = event_base_new();
     return state;
 }
@@ -167,9 +167,9 @@ int init_proposer(struct proposer_state *state, char* interface) {
         return EXIT_FAILURE;
     }
     state->sock = sock;
-    struct hostent *server = gethostbyname(state->conf.coordinator_addr);
+    struct hostent *server = gethostbyname(state->conf->coordinator_addr);
     if (server == NULL) {
-        fprintf(stderr, "ERROR, no such host as %s\n", state->conf.coordinator_addr);
+        fprintf(stderr, "ERROR, no such host as %s\n", state->conf->coordinator_addr);
         return EXIT_FAILURE;
     }
     if (getsockname(sock, (struct sockaddr *)state->mine, &len) == -1) {
@@ -191,7 +191,7 @@ int init_proposer(struct proposer_state *state, char* interface) {
     coordinator->sin_family = AF_INET;
     bcopy((char *)server->h_addr,
       (char *)&(coordinator->sin_addr.s_addr), server->h_length);
-    coordinator->sin_port = htons(state->conf.coordinator_port);
+    coordinator->sin_port = htons(state->conf->coordinator_port);
     state->dest = coordinator;
     init_rawsock(state, state->mine, state->dest);
 
@@ -206,6 +206,7 @@ void free_proposer(struct proposer_state *state) {
     event_free(state->ev_sigterm);
     event_free(state->ev_sigint);
     event_base_free(state->base);
+    free(state->conf);
     free(state);
 }
 
@@ -218,7 +219,8 @@ struct proposer_state *make_proposer(char *config_file, char* interface) {
         perror("init_proposer");
         exit(EXIT_FAILURE);
     }
-    free(conf);
+    printf("second %d, microsecond %d\n", conf->second, conf->microsecond);
+
     struct timeval timeout = {conf->second, conf->microsecond};
     state->ev_recv = event_new(state->base, state->sock, EV_READ|EV_PERSIST|EV_TIMEOUT, on_response, state);
     state->ev_sigterm = evsignal_new(state->base, SIGTERM, signal_handler, state);
