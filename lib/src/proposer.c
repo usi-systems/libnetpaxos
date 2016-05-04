@@ -53,7 +53,9 @@ void on_response(evutil_socket_t fd, short what, void *arg) {
         recvbuf[n] = '\0';
         struct timespec result, end;
         gettime(&end);
-        int negative = timediff(&result, &end, &state->start);
+        int *req_id = (int *)recvbuf;
+        int idx = *req_id % state->outstanding;
+        int negative = timediff(&result, &end, &state->starts[idx]);
         if (negative) {
             fprintf(stderr, "Latency is negative\n");
         } else {
@@ -96,10 +98,19 @@ void init_rawsock (struct proposer_state *ctx, struct sockaddr_in *mine, struct 
 
 int retry (struct proposer_state *ctx) {
     struct iphdr *iph = (struct iphdr *) ctx->datagram;
-    if (sendto (ctx->rawsock, ctx->datagram, iph->tot_len,  0, (struct sockaddr *) ctx->dest, sizeof (*ctx->dest)) < 0) {
-        perror("sendto failed");
+    int  i;
+    for (i = 0; i < ctx->outstanding; i++) {
+        if (sendto (ctx->rawsock, ctx->datagram, iph->tot_len,  0, (struct sockaddr *) ctx->dest, sizeof (*ctx->dest)) < 0) {
+            perror("sendto failed");
+        }
     }
-    gettime(&ctx->start);
+    char *data;
+    data = ctx->datagram + sizeof(struct iphdr) + sizeof(struct udphdr);
+    Message *m = (Message *) data;
+    int *req_id = (int *) m->paxosval;
+    printf("REQUEST ID %d\n", *req_id);
+    int idx = *req_id % ctx->outstanding;
+    gettime(&ctx->starts[idx]);
     return 0;
 }
 
@@ -120,7 +131,11 @@ int paxos_send (struct proposer_state *ctx, char *msg, int msglen) {
     if (sendto (ctx->rawsock, ctx->datagram, iph->tot_len,  0, (struct sockaddr *) ctx->dest, sizeof (*ctx->dest)) < 0) {
         perror("sendto failed");
     }
-    gettime(&ctx->start);
+    Message *m = (Message *) msg;
+    int *req_id = (int *) m->paxosval;
+    printf("REQUEST ID %d\n", *req_id);
+    int idx = *req_id % ctx->outstanding;
+    gettime(&ctx->starts[idx]);
     return 0;
 }
 
@@ -200,6 +215,7 @@ int init_proposer(struct proposer_state *state, char* interface) {
 
 
 void free_proposer(struct proposer_state *state) {
+    free(state->starts);
     free(state->dest);
     free(state->mine);
     event_free(state->ev_recv);
@@ -210,9 +226,11 @@ void free_proposer(struct proposer_state *state) {
     free(state);
 }
 
-struct proposer_state *make_proposer(char *config_file, char* interface) {
+struct proposer_state *make_proposer(char *config_file, char* interface, int outstanding) {
     Config *conf = parse_conf(config_file);
     struct proposer_state *state = proposer_state_new(conf);
+    state->outstanding = outstanding;
+    state->starts = calloc(outstanding, sizeof(struct timespec));
     int res  = init_proposer(state, interface);
     if (res < 0) {
         free_proposer(state);

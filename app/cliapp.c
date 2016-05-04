@@ -9,16 +9,17 @@
 #include "netpaxos_utils.h"
 
 struct app_ctx {
-    int mps;
+    int req_id;
     char* buffer;
     struct proposer_state *proposer;
+    struct timespec *starts;
 };
 
 void run_test(struct app_ctx *state);
 
 struct app_ctx *new_app_ctx() {
     struct app_ctx *state = malloc(sizeof(struct app_ctx));
-    state->mps = 0;
+    state->req_id = 0;
     state->buffer = malloc(64);
     bzero(state->buffer, 64);
     return state;
@@ -33,7 +34,7 @@ void free_app_ctx(struct app_ctx *state) {
 
 int deliver_response(char* res, int rsize, void* arg_ctx) {
     struct app_ctx *state = arg_ctx;
-    state->mps++;
+    state->req_id++;
     if (state->proposer->conf->verbose) {
         int *port = (int *)res;
         printf("on application %d\n", *port);
@@ -42,6 +43,8 @@ int deliver_response(char* res, int rsize, void* arg_ctx) {
     return 0;
 }
 
+/* Key value store client */
+/*
 int craft_message(char** buffer) {
     char key[] = "abcde123456789";
     char value[] = "zxcvbnmasdfghj";
@@ -56,10 +59,13 @@ int craft_message(char** buffer) {
     int size = ksize + vsize + 4; // 3 for three chars and 1 for terminator
     return size;
 }
+*/
 
 void run_test(struct app_ctx *state) {
-    int size = craft_message(&state->buffer);
-    submit(state->proposer, state->buffer, size);
+    // int size = craft_message(&state->buffer);
+    // submit(state->proposer, state->buffer, size);
+    submit(state->proposer, (char*)&state->req_id, sizeof(state->req_id));
+    state->req_id++;
 }
 
 
@@ -68,11 +74,11 @@ int main(int argc, char* argv[]) {
         printf("%s config eth outstanding\n", argv[0]);
         exit(EXIT_FAILURE);
     }
+    int npackets = atoi(argv[3]);
     struct app_ctx *state = new_app_ctx();
-    state->proposer = make_proposer(argv[1], argv[2]);
+    state->proposer = make_proposer(argv[1], argv[2], npackets);
     set_application_ctx(state->proposer, state);
     register_callback(state->proposer, deliver_response);
-    int npackets = atoi(argv[3]);
     int i;
     for (i = 0; i < npackets; i++) {
         run_test(state);
