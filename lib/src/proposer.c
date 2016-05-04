@@ -219,7 +219,7 @@ struct proposer_state *make_proposer(char *config_file, char* interface) {
         exit(EXIT_FAILURE);
     }
     free(conf);
-    struct timeval timeout = {0, 100000};
+    struct timeval timeout = {conf->second, conf->microsecond};
     state->ev_recv = event_new(state->base, state->sock, EV_READ|EV_PERSIST|EV_TIMEOUT, on_response, state);
     state->ev_sigterm = evsignal_new(state->base, SIGTERM, signal_handler, state);
     state->ev_sigint = evsignal_new(state->base, SIGINT, signal_handler, state);
