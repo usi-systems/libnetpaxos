@@ -100,18 +100,19 @@ void init_rawsock (struct proposer_state *ctx, struct sockaddr_in *mine, struct 
 
 int retry (struct proposer_state *ctx) {
     struct iphdr *iph = (struct iphdr *) ctx->datagram;
+    char *data;
+    data = ctx->datagram + sizeof(struct iphdr) + sizeof(struct udphdr);
     int  i;
     for (i = 0; i < ctx->outstanding; i++) {
+        Message *m = (Message *) data;
+        int *req_id = (int *) m->paxosval;
+        int idx = *req_id % ctx->outstanding;
+        gettime(&ctx->starts[idx]);
         if (sendto (ctx->rawsock, ctx->datagram, iph->tot_len,  0, (struct sockaddr *) ctx->dest, sizeof (*ctx->dest)) < 0) {
             perror("sendto failed");
         }
+        (*req_id)--;
     }
-    char *data;
-    data = ctx->datagram + sizeof(struct iphdr) + sizeof(struct udphdr);
-    Message *m = (Message *) data;
-    int *req_id = (int *) m->paxosval;
-    int idx = *req_id % ctx->outstanding;
-    gettime(&ctx->starts[idx]);
     return 0;
 }
 
