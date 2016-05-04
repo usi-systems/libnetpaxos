@@ -60,9 +60,7 @@ void on_response(evutil_socket_t fd, short what, void *arg) {
             fprintf(stderr, "Latency is negative\n");
         } else {
             double latency = (result.tv_sec + ((double)result.tv_nsec) / 1e9);
-            if (*req_id % 2000 == 0) {
-                fprintf(stdout, "%.9f\n", latency);
-            }
+            fprintf(stdout, "%.9f\n", latency);
         }
         if (state->conf->verbose) {
             printf("on value: %s: %d length, addr_length: %d\n", recvbuf, n, remote_len);
@@ -99,20 +97,24 @@ void init_rawsock (struct proposer_state *ctx, struct sockaddr_in *mine, struct 
 }
 
 int retry (struct proposer_state *ctx) {
+    int start = 0;
     struct iphdr *iph = (struct iphdr *) ctx->datagram;
     char *data;
     data = ctx->datagram + sizeof(struct iphdr) + sizeof(struct udphdr);
+    Message *m = (Message *) data;
+    int *req_id = (int *) m->paxosval;
+    start = *req_id;
     int  i;
     for (i = 0; i < ctx->outstanding; i++) {
-        Message *m = (Message *) data;
-        int *req_id = (int *) m->paxosval;
         int idx = *req_id % ctx->outstanding;
+        printf("req %d, id %d\n", *req_id, idx);
         gettime(&ctx->starts[idx]);
         if (sendto (ctx->rawsock, ctx->datagram, iph->tot_len,  0, (struct sockaddr *) ctx->dest, sizeof (*ctx->dest)) < 0) {
             perror("sendto failed");
         }
         (*req_id)--;
     }
+    *req_id = start;
     return 0;
 }
 
