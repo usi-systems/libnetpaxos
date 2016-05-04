@@ -35,7 +35,8 @@ int deliver_response(char* res, int rsize, void* arg_ctx) {
     struct app_ctx *state = arg_ctx;
     state->mps++;
     if (state->proposer->conf->verbose) {
-        printf("on application %s\n", res);
+        int *port = (int *)res;
+        printf("on application %d\n", *port);
     }
     run_test(state);
     return 0;
@@ -63,15 +64,19 @@ void run_test(struct app_ctx *state) {
 
 
 int main(int argc, char* argv[]) {
-    if (argc != 3) {
-        printf("%s config eth\n", argv[0]);
+    if (argc != 4) {
+        printf("%s config eth outstanding\n", argv[0]);
         exit(EXIT_FAILURE);
     }
     struct app_ctx *state = new_app_ctx();
     state->proposer = make_proposer(argv[1], argv[2]);
     set_application_ctx(state->proposer, state);
     register_callback(state->proposer, deliver_response);
-    run_test(state);
+    int npackets = atoi(argv[3]);
+    int i;
+    for (i = 0; i < npackets; i++) {
+        run_test(state);
+    }
     event_base_dispatch(state->proposer->base);
     free_app_ctx(state);
     return (EXIT_SUCCESS);

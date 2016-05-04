@@ -23,10 +23,10 @@ int deliver(struct LearnerCtx *ctx, int inst, char* value, int size) {
     if (state->conf->verbose) {
         printf("instance %d: %s\n", inst, req->value);
     }
-    char res[] = "OK";
+    // char res[] = "OK";
     int tp_dst = ntohs(req->client->sin_port);
     if ((tp_dst % state->number_of_servers) == state->server_id) {
-        send_msg(state->sock, res, 2, req->client);
+        send_msg(state->sock, (char*)&tp_dst, 4, req->client);
     }
     return 0;
 }
