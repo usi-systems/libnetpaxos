@@ -108,7 +108,6 @@ int retry (struct proposer_state *ctx) {
     data = ctx->datagram + sizeof(struct iphdr) + sizeof(struct udphdr);
     Message *m = (Message *) data;
     int *req_id = (int *) m->paxosval;
-    printf("REQUEST ID %d\n", *req_id);
     int idx = *req_id % ctx->outstanding;
     gettime(&ctx->starts[idx]);
     return 0;
@@ -133,7 +132,6 @@ int paxos_send (struct proposer_state *ctx, char *msg, int msglen) {
     }
     Message *m = (Message *) msg;
     int *req_id = (int *) m->paxosval;
-    printf("REQUEST ID %d\n", *req_id);
     int idx = *req_id % ctx->outstanding;
     gettime(&ctx->starts[idx]);
     return 0;

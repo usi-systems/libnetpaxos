@@ -34,7 +34,6 @@ void free_app_ctx(struct app_ctx *state) {
 
 int deliver_response(char* res, int rsize, void* arg_ctx) {
     struct app_ctx *state = arg_ctx;
-    state->req_id++;
     if (state->proposer->conf->verbose) {
         int *port = (int *)res;
         printf("on application %d\n", *port);
