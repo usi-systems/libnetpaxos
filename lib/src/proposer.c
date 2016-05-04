@@ -107,7 +107,6 @@ int retry (struct proposer_state *ctx) {
     int  i;
     for (i = 0; i < ctx->outstanding; i++) {
         int idx = *req_id % ctx->outstanding;
-        printf("req %d, id %d\n", *req_id, idx);
         gettime(&ctx->starts[idx]);
         if (sendto (ctx->rawsock, ctx->datagram, iph->tot_len,  0, (struct sockaddr *) ctx->dest, sizeof (*ctx->dest)) < 0) {
             perror("sendto failed");
