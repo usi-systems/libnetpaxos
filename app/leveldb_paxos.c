@@ -68,9 +68,9 @@ int deliver(struct LearnerCtx *ctx, int inst, char* value, int size) {
     int *req_id = (int *)req->value;
     // printf("Received msgid: %d\n", *req_id);
     char *err = NULL;
-
+    int my_turn = (inst % ctx->conf.num_acceptors == ctx->conf.node_id);
     char op = request[intsize];
- 
+
     // char *msg = req->value + 7;
     // printf("%d\n", op);
     // printf("req %s\n", msg);
@@ -94,8 +94,9 @@ int deliver(struct LearnerCtx *ctx, int inst, char* value, int size) {
                 leveldb_free(err); err = NULL;
                 return FAILED;
             }
-
-            send_msg(state->sock, (char*)req_id, intsize, req->client);
+            if (my_turn) {
+                send_msg(state->sock, (char*)req_id, intsize, req->client);
+            }
             return SUCCESS;
         }
         case GET: {
@@ -112,11 +113,15 @@ int deliver(struct LearnerCtx *ctx, int inst, char* value, int size) {
 
             if (*return_val) {
                 // printf("GET value %s: %zu\n", return_val, read_len);
-                send_msg(state->sock, return_val, read_len, req->client);
+                if (my_turn) {
+                    send_msg(state->sock, return_val, read_len, req->client);
+                }
                 free(return_val);
                 return GOT_VALUE;
             }
-            send_msg(state->sock, (char*)req_id, intsize, req->client);
+            if (my_turn) {
+                send_msg(state->sock, (char*)req_id, intsize, req->client);
+            }
             return NOT_FOUND;
         }
         case DELETE: {
@@ -126,7 +131,9 @@ int deliver(struct LearnerCtx *ctx, int inst, char* value, int size) {
                 leveldb_free(err); err = NULL;
                 return FAILED;
             }
-            send_msg(state->sock, (char*)req_id, intsize, req->client);
+            if (my_turn) {
+                send_msg(state->sock, (char*)req_id, intsize, req->client);
+            }
             return SUCCESS;
         }
     }
