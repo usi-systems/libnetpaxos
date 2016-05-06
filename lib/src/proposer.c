@@ -62,7 +62,7 @@ void on_response(evutil_socket_t fd, short what, void *arg) {
             fprintf(stderr, "Latency is negative\n");
         } else {
             double latency = (result.tv_sec + ((double)result.tv_nsec) / 1e9);
-            // fprintf(stdout, "%.9f\n", latency);
+            fprintf(stdout, "%.9f\n", latency);
         }
         if (state->conf->verbose) {
             printf("on value: %s: %d length, addr_length: %d\n", recvbuf, n, remote_len);
