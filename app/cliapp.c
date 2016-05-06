@@ -19,7 +19,7 @@ void run_test(struct app_ctx *state);
 
 struct app_ctx *new_app_ctx() {
     struct app_ctx *state = malloc(sizeof(struct app_ctx));
-    state->req_id = 1;
+    state->req_id = 0;
     state->buffer = malloc(64);
     bzero(state->buffer, 64);
     return state;
@@ -34,10 +34,11 @@ void free_app_ctx(struct app_ctx *state) {
 
 int deliver_response(char* res, int rsize, void* arg_ctx) {
     struct app_ctx *state = arg_ctx;
+    int *req_id = (int *)res;
     if (state->proposer->conf->verbose) {
-        int *port = (int *)res;
-        printf("on application %d\n", *port);
+        printf("on application %d\n", *req_id);
     }
+    state->req_id = *req_id;
     run_test(state);
     return 0;
 }

@@ -114,7 +114,7 @@ int deliver(struct LearnerCtx *ctx, int inst, char* value, int size) {
             if (*return_val) {
                 // printf("GET value %s: %zu\n", return_val, read_len);
                 if (my_turn) {
-                    send_msg(state->sock, return_val, read_len, req->client);
+                    send_msg(state->sock, (char*)req_id, read_len, req->client);
                 }
                 free(return_val);
                 return GOT_VALUE;
