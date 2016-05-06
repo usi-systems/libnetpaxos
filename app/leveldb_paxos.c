@@ -64,55 +64,73 @@ int deliver(struct LearnerCtx *ctx, int inst, char* value, int size) {
     struct app_request *req = (struct app_request *) value;
     struct application *state = ctx->app;
     char *request = req->value;
-    if (!request || request[0] == '\0') {
-        return FAILED;
-    }
+    int intsize = sizeof(int);
+    int *req_id = (int *)req->value;
+    // printf("Received msgid: %d\n", *req_id);
     char *err = NULL;
-    char op = request[0];
+
+    char op = request[intsize];
+ 
+    // char *msg = req->value + 7;
+    // printf("%d\n", op);
+    // printf("req %s\n", msg);
+
     size_t read_len;
     switch(op) {
         case PUT: {
-            unsigned char ksize = request[1];
-            unsigned char vsize = request[2];
-            leveldb_put(state->db, state->woptions, &request[3], ksize, &request[3+ksize], vsize, &err);
+            unsigned char ksize = request[intsize + 1];
+            unsigned char vsize = request[intsize + 2];
+
+            // char key[ksize + 1];
+            // memcpy(key, &request[intsize + 3], ksize);
+            // key[ksize] = '\0';
+
+            // char value[vsize + 1];
+            // memcpy(value, &request[intsize + 3 + vsize], vsize);
+            // printf("%s:%d, %s:%d\n", key, ksize,  value, vsize);
+
+            leveldb_put(state->db, state->woptions, &request[intsize + 3], ksize, &request[intsize + 3 + ksize], vsize, &err);
             if (err != NULL) {
                 leveldb_free(err); err = NULL;
                 return FAILED;
             }
-            int res = SUCCESS;
-            send_msg(state->sock, (char*)&res, 1, req->client);
+
+            send_msg(state->sock, (char*)req_id, intsize, req->client);
             return SUCCESS;
         }
         case GET: {
-            unsigned char ksize = request[1];
-            char *return_val = leveldb_get(state->db, state->roptions, &request[3], ksize, &read_len, &err);
+            unsigned char ksize = request[intsize + 1];
+            char *return_val = leveldb_get(state->db, state->roptions, &request[intsize + 3], ksize, &read_len, &err);
             if (err != NULL) {
                 leveldb_free(err); err = NULL;
                 return FAILED;
             }
+            // char key[ksize + 1];
+            // memcpy(key, &request[intsize + 3], ksize);
+            // key[ksize] = '\0';
+            // printf("GET key %s:%d\n", key, ksize);
+
             if (*return_val) {
+                // printf("GET value %s: %zu\n", return_val, read_len);
                 send_msg(state->sock, return_val, read_len, req->client);
                 free(return_val);
                 return GOT_VALUE;
             }
-            int res = NOT_FOUND;
-            send_msg(state->sock, (char*)&res, 1, req->client);
+            send_msg(state->sock, (char*)req_id, intsize, req->client);
             return NOT_FOUND;
         }
         case DELETE: {
-            unsigned char ksize = request[1];
-            leveldb_delete(state->db, state->woptions, &request[3], ksize, &err);
+            unsigned char ksize = request[intsize + 1];
+            leveldb_delete(state->db, state->woptions, &request[intsize + 3], ksize, &err);
             if (err != NULL) {
                 leveldb_free(err); err = NULL;
                 return FAILED;
             }
-            int res = SUCCESS;
-            send_msg(state->sock, (char*)&res, 1, req->client);
+            send_msg(state->sock, (char*)req_id, intsize, req->client);
             return SUCCESS;
         }
     }
-    int res = INVALID_OP;
-    send_msg(state->sock, (char*)&res, 1, req->client);
+    // send_msg(state->sock, (char*)req_id, intsize, req->client);
     return INVALID_OP;
 }
 

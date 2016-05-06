@@ -15,7 +15,7 @@ void print_message(Message *m) {
         "vround:   %d\n"
         "acceptor: %d\t"
         "paxosval: %s\n",
-        m->msgtype, m->inst, m->rnd, m->vrnd, m->acptid, m->paxosval);
+        m->msgtype, m->inst, m->rnd, m->vrnd, m->acptid, m->paxosval + 7);
 }
 
 void pack(Message *src) {

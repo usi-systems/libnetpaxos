@@ -19,7 +19,7 @@ void run_test(struct app_ctx *state);
 
 struct app_ctx *new_app_ctx() {
     struct app_ctx *state = malloc(sizeof(struct app_ctx));
-    state->req_id = 0;
+    state->req_id = 1;
     state->buffer = malloc(64);
     bzero(state->buffer, 64);
     return state;
@@ -43,27 +43,28 @@ int deliver_response(char* res, int rsize, void* arg_ctx) {
 }
 
 /* Key value store client */
-/*
-int craft_message(char** buffer) {
-    char key[] = "abcde123456789";
-    char value[] = "zxcvbnmasdfghj";
 
-    (*buffer)[0] = (random() % 2) ? PUT : GET;
+int craft_message(char** buffer, int req_id) {
+    memcpy(*buffer, &req_id, sizeof(int));
+    int intsize = sizeof(int);
+    char key[] = "abcde12345";
+    char value[] = "zxcvbnmasdfghj";
+    (*buffer)[intsize] = (random() % 2) ? PUT : GET;
     char ksize = (unsigned char) strlen(key);
     char vsize = (unsigned char) strlen(value);
-    (*buffer)[1] = ksize;
-    (*buffer)[2] = vsize;
-    memcpy(&(*buffer)[3], key, ksize);
-    memcpy(&(*buffer)[ 3 + ksize ], value, vsize);
-    int size = ksize + vsize + 4; // 3 for three chars and 1 for terminator
+    (*buffer)[intsize + 1] = ksize;
+    (*buffer)[intsize + 2] = vsize;
+    memcpy(&(*buffer)[intsize + 3], key, ksize);
+    memcpy(&(*buffer)[ intsize + 3 + ksize ], value, vsize);
+    int size = intsize + 3 + ksize + vsize;
     return size;
 }
-*/
+
 
 void run_test(struct app_ctx *state) {
-    // int size = craft_message(&state->buffer);
-    // submit(state->proposer, state->buffer, size);
-    submit(state->proposer, (char*)&state->req_id, sizeof(state->req_id));
+    int size = craft_message(&state->buffer, state->req_id);
+    submit(state->proposer, state->buffer, size);
+    // submit(state->proposer, (char*)&state->req_id, sizeof(state->req_id));
     state->req_id++;
 }
 

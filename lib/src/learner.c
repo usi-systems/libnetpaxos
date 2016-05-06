@@ -102,9 +102,9 @@ void handle_accepted(LearnerCtx *ctx, Message *msg, evutil_socket_t fd) {
             if (!exist) {
                 state->from = state->from | mask;
                 state->count++;
-                if (!state->paxosval[0]) {
-                    strcpy(state->paxosval, msg->paxosval);
-                }
+                memcpy(state->paxosval, msg->paxosval, 32);
+                // char *abc = state->paxosval + 7;
+                // printf("abc %s\n", abc);
                 // printf("instance: %d - count %d\n", msg->inst, state->count);
                 if (state->count == ctx->maj) { // Chosen value
                     state->finished = 1;        // Marked values has been chosen
