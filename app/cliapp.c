@@ -26,8 +26,8 @@ struct app_ctx *new_app_ctx() {
 }
 
 void free_app_ctx(struct app_ctx *state) {
-    free_proposer(state->proposer);
     free(state->buffer);
+    free_proposer(state->proposer);
     free(state);
 }
 

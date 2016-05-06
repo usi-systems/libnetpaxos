@@ -107,7 +107,7 @@ int retry (struct proposer_state *ctx) {
     int *req_id = (int *) m->paxosval;
     start = *req_id;
     int  i;
-    for (i = 0; i < ctx->outstanding; i++) {
+    for (i = 0; i < ctx->outstanding && (*req_id >= 0); i++) {
         int idx = *req_id % ctx->outstanding;
         printf("Retry Message id %d\n", *req_id);
         gettime(&ctx->starts[idx]);

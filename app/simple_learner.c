@@ -19,7 +19,8 @@ struct application {
 int deliver(struct LearnerCtx *ctx, int inst, char* value, int size) {
     struct app_request *req = (struct app_request *) value;
     struct application *state = ctx->app;
-    int *req_id = (int *) req->value;
+    int *req_id = (int *)req->value;
+
     if (state->conf->verbose) {
         printf("instance %d: req_id %d\n", inst, *req_id);
     }
