@@ -38,6 +38,41 @@ void signal_handler(evutil_socket_t fd, short what, void *arg) {
     }
 }
 
+// void on_response(evutil_socket_t fd, short what, void *arg) {
+//     struct proposer_state *state = arg;
+//     if (what&EV_READ) {
+//         struct sockaddr_in remote;
+//         socklen_t remote_len = sizeof(remote);
+//         char recvbuf[BUFSIZE];
+//         bzero(recvbuf, BUFSIZE);
+//         int n = recvfrom(fd, recvbuf, BUFSIZE, 0, (struct sockaddr *) &remote, &remote_len);
+//         if (n < 0) {
+//           perror("ERROR in recvfrom");
+//           return;
+//         }
+//         recvbuf[n] = '\0';
+//         struct timespec result, end;
+//         gettime(&end);
+//         int *req_id = (int *)recvbuf;
+
+//         int idx = *req_id % state->outstanding;
+//         // printf("received msg %d, index %d\n", *req_id, idx);
+//         int negative = timediff(&result, &end, &state->starts[idx]);
+//         if (negative) {
+//             fprintf(stderr, "Latency is negative\n");
+//         } else {
+//             double latency = (result.tv_sec + ((double)result.tv_nsec) / 1e9);
+//             fprintf(stdout, "%.9f\n", latency);
+//         }
+//         if (state->conf->verbose) {
+//             printf("on value: %s: %d length, addr_length: %d\n", recvbuf, n, remote_len);
+//         }
+//         state->deliver(recvbuf, n, state->app_ctx);
+//     } else if (what&EV_TIMEOUT) {
+//         retry(state);
+//     }
+// }
+
 void on_response(evutil_socket_t fd, short what, void *arg) {
     struct proposer_state *state = arg;
     if (what&EV_READ) {
@@ -53,11 +88,9 @@ void on_response(evutil_socket_t fd, short what, void *arg) {
         recvbuf[n] = '\0';
         struct timespec result, end;
         gettime(&end);
-        int *req_id = (int *)recvbuf;
+        struct request *req = (struct request *)recvbuf;
 
-        int idx = *req_id % state->outstanding;
-        // printf("received msg %d, index %d\n", *req_id, idx);
-        int negative = timediff(&result, &end, &state->starts[idx]);
+        int negative = timediff(&result, &end, &req->ts);
         if (negative) {
             fprintf(stderr, "Latency is negative\n");
         } else {
@@ -99,28 +132,22 @@ void init_rawsock (struct proposer_state *ctx, struct sockaddr_in *mine, struct 
 }
 
 int retry (struct proposer_state *ctx) {
-    int start = 0;
     struct iphdr *iph = (struct iphdr *) ctx->datagram;
     char *data;
     data = ctx->datagram + sizeof(struct iphdr) + sizeof(struct udphdr);
     Message *m = (Message *) data;
-    int *req_id = (int *) m->paxosval;
-    start = *req_id;
+    struct request *req = (struct request *) m->paxosval;
     int  i;
-    for (i = 0; i < ctx->outstanding && (*req_id >= 0); i++) {
-        int idx = *req_id % ctx->outstanding;
-        printf("Retry Message id %d\n", *req_id);
-        gettime(&ctx->starts[idx]);
+    for (i = 0; i < ctx->outstanding; i++) {
+        gettime(&req->ts);
         if (sendto (ctx->rawsock, ctx->datagram, iph->tot_len,  0, (struct sockaddr *) ctx->dest, sizeof (*ctx->dest)) < 0) {
             perror("sendto failed");
         }
-        (*req_id)--;
     }
-    *req_id = start;
     return 0;
 }
 
-int paxos_send (struct proposer_state *ctx, char *msg, int msglen, int idx) {
+int paxos_send (struct proposer_state *ctx, char *msg, int msglen) {
     char *data;
     //Data part
     data = ctx->datagram + sizeof(struct iphdr) + sizeof(struct udphdr);
@@ -137,21 +164,31 @@ int paxos_send (struct proposer_state *ctx, char *msg, int msglen, int idx) {
     if (sendto (ctx->rawsock, ctx->datagram, iph->tot_len,  0, (struct sockaddr *) ctx->dest, sizeof (*ctx->dest)) < 0) {
         perror("sendto failed");
     }
-    gettime(&ctx->starts[idx]);
     return 0;
 }
 
+// void submit(struct proposer_state *state, char* msg, int msg_size) {
+//     int *req_id = (int *)msg;
+//     // printf("Message id %d\n", *req_id);
+//     int idx = *req_id % state->outstanding;
+//     Message m;
+//     initialize_message(&m, phase2a);
+//     memcpy(m.paxosval, msg, msg_size);
+//     m.paxosval[msg_size] = '\0';
+//     m.client = *state->mine;
+//     pack(&m);
+//     paxos_send(state, (char*)&m, sizeof(m), idx);
+// }
 void submit(struct proposer_state *state, char* msg, int msg_size) {
-    int *req_id = (int *)msg;
-    // printf("Message id %d\n", *req_id);
-    int idx = *req_id % state->outstanding;
+    struct request *req = (struct request *)msg;
+    gettime(&req->ts);
     Message m;
     initialize_message(&m, phase2a);
     memcpy(m.paxosval, msg, msg_size);
     m.paxosval[msg_size] = '\0';
     m.client = *state->mine;
     pack(&m);
-    paxos_send(state, (char*)&m, sizeof(m), idx);
+    paxos_send(state, (char*)&m, sizeof(m));
 }
 
 void set_application_ctx(struct proposer_state *state, void *arg) {

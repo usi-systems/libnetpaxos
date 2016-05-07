@@ -34,11 +34,11 @@ void free_app_ctx(struct app_ctx *state) {
 
 int deliver_response(char* res, int rsize, void* arg_ctx) {
     struct app_ctx *state = arg_ctx;
-    int *req_id = (int *)res;
+    struct request *req = (struct request *)res;
     if (state->proposer->conf->verbose) {
-        printf("on application %d\n", *req_id);
+        printf("on application %d\n", req->request_id);
     }
-    state->req_id = *req_id;
+    state->req_id = req->request_id;
     run_test(state);
     return 0;
 }
@@ -61,9 +61,18 @@ int craft_message(char** buffer, int req_id) {
     return size;
 }
 
+int simple_message(char** buffer, int req_id) {
+    struct request req;
+    req.request_id = req_id;
+    int size = sizeof(struct request);
+    memcpy(*buffer, &req, size);
+    return size;
+}
+
 
 void run_test(struct app_ctx *state) {
-    int size = craft_message(&state->buffer, state->req_id);
+    // int size = craft_message(&state->buffer, state->req_id);
+    int size = simple_message(&state->buffer, state->req_id);
     submit(state->proposer, state->buffer, size);
     // submit(state->proposer, (char*)&state->req_id, sizeof(state->req_id));
     state->req_id++;

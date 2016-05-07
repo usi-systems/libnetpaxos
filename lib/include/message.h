@@ -27,6 +27,11 @@ typedef struct Message {
     struct sockaddr_in client;
 } Message;
 
+struct request {
+    int request_id;
+    struct timespec ts;
+};
+
 
 void print_message(Message *m);
 void pack(Message *src);

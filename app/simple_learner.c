@@ -19,14 +19,14 @@ struct application {
 int deliver(struct LearnerCtx *ctx, int inst, char* value, int size) {
     struct app_request *req = (struct app_request *) value;
     struct application *state = ctx->app;
-    int *req_id = (int *)req->value;
+    struct request *msg = (struct request *)req->value;
 
     if (state->conf->verbose) {
-        printf("instance %d: req_id %d\n", inst, *req_id);
+        printf("instance %d: req_id %d\n", inst, msg->request_id);
     }
     // char res[] = "OK";
     if ((inst % state->conf->num_acceptors) == state->server_id) {
-        send_msg(state->sock, (char*)req_id, 4, req->client);
+        send_msg(state->sock, (char*)msg, sizeof(struct request), req->client);
     }
     return 0;
 }
