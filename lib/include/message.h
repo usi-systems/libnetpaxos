@@ -29,6 +29,9 @@ typedef struct Message {
 
 struct request {
     int request_id;
+    char op;
+    char key[5];
+    char value[6];
     struct timespec ts;
 };
 
