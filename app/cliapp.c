@@ -9,24 +9,25 @@
 #include "netpaxos_utils.h"
 
 struct app_ctx {
-    int req_id;
-    char* buffer;
+    int request_id;
     struct proposer_state *proposer;
     struct timespec *starts;
+    struct request req;
 };
 
 void run_test(struct app_ctx *state);
 
 struct app_ctx *new_app_ctx() {
     struct app_ctx *state = malloc(sizeof(struct app_ctx));
-    state->req_id = 0;
-    state->buffer = malloc(64);
-    bzero(state->buffer, 64);
+    state->request_id = 0;
+    char key[] = "abcde";
+    char value[] = "123456";
+    memcpy(state->req.key, key, 5);
+    memcpy(state->req.value, value, 6);
     return state;
 }
 
 void free_app_ctx(struct app_ctx *state) {
-    free(state->buffer);
     free_proposer(state->proposer);
     free(state);
 }
@@ -38,41 +39,17 @@ int deliver_response(char* res, int rsize, void* arg_ctx) {
     if (state->proposer->conf->verbose) {
         printf("on application %d\n", req->request_id);
     }
-    state->req_id = req->request_id;
+    state->request_id = req->request_id;
     run_test(state);
     return 0;
 }
 
-/* Key value store client */
-
-int craft_message(char** buffer, int req_id) {
-    struct request req;
-    req.request_id = req_id;
-    req.op = (random() % 2) ? PUT : GET;
-    char key[] = "abcde";
-    char value[] = "123456";
-    memcpy(req.key, key, 5);
-    memcpy(req.value, value, 6);
-    int size = sizeof(struct request);
-    memcpy(*buffer, &req, size);
-    return size;
-}
-
-int simple_message(char** buffer, int req_id) {
-    struct request req;
-    req.request_id = req_id;
-    int size = sizeof(struct request);
-    memcpy(*buffer, &req, size);
-    return size;
-}
-
 
 void run_test(struct app_ctx *state) {
-    int size = craft_message(&state->buffer, state->req_id);
-    // int size = simple_message(&state->buffer, state->req_id);
-    submit(state->proposer, state->buffer, size);
-    // submit(state->proposer, (char*)&state->req_id, sizeof(state->req_id));
-    state->req_id++;
+    state->req.request_id = state->request_id++;
+    state->req.op = (random() % 2) ? PUT : GET;
+    int size = sizeof(struct request);
+    submit(state->proposer, (char *)&state->req, size);
 }
 
 
