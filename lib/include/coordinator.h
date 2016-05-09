@@ -9,19 +9,16 @@
 
 typedef struct CoordinatorCtx {
     struct event_base *base;
-    struct sockaddr_in *acceptor_addr;
+    struct sockaddr_in *dest;
+    struct sockaddr_in *mine;
     Config conf;
     int cur_inst;
     int listen_port;
     int vlen;
     evutil_socket_t sock;
-    struct mmsghdr *msgs;
-    struct iovec *iovecs;
-    Message *bufs;
-    char **addrbufs;
-    struct mmsghdr *out_msgs;
-    struct iovec *out_iovecs;
-    Message *out_bufs;
+    Message *msg_in;
+    int rawsock;
+    char datagram[BUFSIZE];
 } CoordinatorCtx;
 
 int start_coordinator(Config *conf);

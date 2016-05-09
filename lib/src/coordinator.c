@@ -1,4 +1,3 @@
-#define _GNU_SOURCE
 #include <stdio.h>
 #include <event2/event.h>
 #include <sys/socket.h>
@@ -22,6 +21,8 @@
 #include "netpaxos_utils.h"
 #include "config.h"
 #include "coordinator.h"
+#include <netinet/udp.h>   //Provides declarations for udp header
+#include <netinet/ip.h>    //Provides declarations for ip header
 
 void propose_value(CoordinatorCtx *ctx, void *arg, int size, struct sockaddr_in client);
 
@@ -29,54 +30,45 @@ CoordinatorCtx *coordinator_new(Config conf) {
     CoordinatorCtx *ctx = malloc(sizeof(CoordinatorCtx));
     ctx->conf = conf;
     ctx->cur_inst = 0;
-    ctx->msgs = calloc(ctx->conf.vlen, sizeof(struct mmsghdr));
-    ctx->iovecs = calloc(ctx->conf.vlen, sizeof(struct iovec));
-    ctx->out_msgs = calloc(ctx->conf.vlen, sizeof(struct mmsghdr));
-    ctx->out_iovecs = calloc(ctx->conf.vlen, sizeof(struct iovec));
-    ctx->out_bufs = calloc(ctx->conf.vlen, sizeof(struct Message));
-    ctx->bufs = calloc(ctx->conf.vlen, sizeof(Message));
-    ctx->addrbufs = calloc(ctx->conf.vlen, sizeof(char*));
-    int i;
-    for (i = 0; i < ctx->conf.vlen; i++) {
-        ctx->addrbufs[i] = malloc(BUFSIZE + 1);
-    }
-    for (i = 0; i < ctx->conf.vlen; i++) {
-        ctx->iovecs[i].iov_base          = &ctx->bufs[i];
-        ctx->iovecs[i].iov_len           = BUFSIZE;
-        ctx->msgs[i].msg_hdr.msg_iov     = &ctx->iovecs[i];
-        ctx->msgs[i].msg_hdr.msg_iovlen  = 1;
-        ctx->msgs[i].msg_hdr.msg_name    = ctx->addrbufs[i];
-        ctx->msgs[i].msg_hdr.msg_namelen = BUFSIZE;
-    }
+    ctx->dest = malloc( sizeof (struct sockaddr_in));
+    ctx->mine = malloc( sizeof (struct sockaddr_in));
+    ctx->msg_in = malloc(sizeof(struct Message));
     return ctx;
 }
 
 void coordinator_free(CoordinatorCtx *ctx) {
     event_base_free(ctx->base);
-    free(ctx->msgs);
-    free(ctx->iovecs);
-    free(ctx->out_msgs);
-    free(ctx->out_iovecs);
-    free(ctx->out_bufs);
-    int i;
-    for (i = 0; i < ctx->conf.vlen; i++) {
-        free(ctx->addrbufs[i]);
-    }
-    free(ctx->acceptor_addr);
-    free(ctx->bufs);
-    free(ctx->addrbufs);
+    free(ctx->msg_in);
+    free(ctx->mine);
+    free(ctx->dest);
     free(ctx);
 
 }
 
-void init_out_msgs(CoordinatorCtx *ctx) {
-    int i;
-    for (i = 0; i < ctx->conf.vlen; i++) {
-        ctx->out_msgs[i].msg_hdr.msg_name    = (void *)ctx->acceptor_addr;
-        ctx->out_msgs[i].msg_hdr.msg_namelen = sizeof(struct sockaddr_in);
-        ctx->out_msgs[i].msg_hdr.msg_iov    = &ctx->out_iovecs[i];
-        ctx->out_msgs[i].msg_hdr.msg_iovlen = 1;
-    }
+
+void init_coord_rawsock (struct CoordinatorCtx *ctx, struct sockaddr_in *mine, struct sockaddr_in *dest)
+{
+    //zero out the packet buffer
+    memset (ctx->datagram, 0, BUFSIZE);
+    //IP header
+    struct iphdr *iph = (struct iphdr *) ctx->datagram;
+    //UDP header
+    struct udphdr *udph = (struct udphdr *) (ctx->datagram + sizeof (struct ip));
+    //Fill in the IP Header
+    iph->ihl = 5;
+    iph->version = 4;
+    iph->tos = 0;
+    iph->id = htonl (54321); //Id of this packet
+    iph->frag_off = 0;
+    iph->ttl = 255;
+    iph->protocol = IPPROTO_UDP;
+    iph->check = 0;      //Set to 0 before calculating checksum
+    iph->saddr = mine->sin_addr.s_addr;    //Spoof the source ip address
+    iph->daddr = dest->sin_addr.s_addr;
+    //UDP header
+    udph->source = mine->sin_port;
+    udph->dest = dest->sin_port;
+    udph->check = 0; //leave checksum 0 now, filled later by pseudo header
 }
 
 
@@ -88,43 +80,46 @@ void signal_handler(evutil_socket_t fd, short what, void *arg) {
     }
 }
 
+
+int send_message (struct CoordinatorCtx *ctx, char *msg, int msglen) {
+    char *data;
+    //Data part
+    data = ctx->datagram + sizeof(struct iphdr) + sizeof(struct udphdr);
+    memcpy(data , msg, msglen);
+    //Ip checksum
+    struct iphdr *iph = (struct iphdr *) ctx->datagram;
+    iph->check = csum ((unsigned short *) ctx->datagram, iph->tot_len);
+    iph->tot_len = sizeof (struct iphdr) + sizeof (struct udphdr) + msglen;
+    //UDP header
+    struct udphdr *udph = (struct udphdr *) (ctx->datagram + sizeof (struct ip));
+    udph->len = htons(8 + msglen); //udp header size
+    udph->check = 0; //leave checksum 0 now, filled later by pseudo header
+
+    if (sendto (ctx->rawsock, ctx->datagram, iph->tot_len,  0, (struct sockaddr *) ctx->dest, sizeof (*ctx->dest)) < 0) {
+        perror("sendto failed");
+    }
+    return 0;
+}
+
+
 void on_value(evutil_socket_t fd, short what, void *arg) {
     CoordinatorCtx *ctx = (CoordinatorCtx *) arg;
-    int retval = recvmmsg(ctx->sock, ctx->msgs, ctx->conf.vlen, MSG_WAITFORONE, NULL);
-    if (retval < 0) {
-      perror("recvmmsg()");
-    }
-    else if (retval > 0) {
-        int i;
-        for (i = 0; i < retval; i++) {
-            // struct sockaddr_in *client = ctx->msgs[i].msg_hdr.msg_name;
-            // printf("received from %s:%d\n", inet_ntoa(client->sin_addr), ntohs(client->sin_port));
-            // if (ctx->cur_inst >= ctx->conf.maxinst)
-                // ctx->cur_inst = 0;
-            memcpy(&ctx->out_bufs[i], &ctx->bufs[i], ctx->msgs[i].msg_len);
-            unpack(&ctx->out_bufs[i]);
-            ctx->out_bufs[i].inst = ctx->cur_inst++;
-            if(ctx->conf.verbose) {
-                printf("Received %d messages\n", retval);
-                print_message(&ctx->out_bufs[i]);
-            }
-            pack(&ctx->out_bufs[i]);
-            ctx->out_iovecs[i].iov_base         = (void*)&ctx->out_bufs[i];
-            ctx->out_iovecs[i].iov_len          = sizeof(Message);
-        }
-        int r = sendmmsg(ctx->sock, ctx->out_msgs, retval, 0);
-        if (r <= 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
-            }
+    struct sockaddr_in remote;
+    socklen_t remote_len = sizeof(remote);
 
-            if (errno == ECONNREFUSED) {
-            }
-            perror("sendmmsg()");
-        }
-        if(ctx->conf.verbose) {
-            printf("Send %d messages\n", r);
-        }
+    int n = recvfrom(fd, ctx->msg_in, sizeof(Message), 0, (struct sockaddr *) &remote, &remote_len);
+    if (n < 0) {
+      perror("ERROR in recvfrom");
+      return;
     }
+    unpack(ctx->msg_in);
+    if (ctx->conf.verbose) {
+        print_message(ctx->msg_in);
+    }
+    ctx->msg_in->inst = ctx->cur_inst;
+    pack(ctx->msg_in);
+    send_message(ctx, (char *)ctx->msg_in, sizeof(Message));
+    ctx->cur_inst++;
 }
 
 
@@ -133,7 +128,6 @@ int start_coordinator(Config *conf) {
     CoordinatorCtx *ctx = coordinator_new(*conf);
     ctx->base = event_base_new();
     struct hostent *server;
-    ctx->acceptor_addr = malloc( sizeof (struct sockaddr_in) );
 
     server = gethostbyname(conf->acceptor_addr);
     if (server == NULL) {
@@ -142,17 +136,24 @@ int start_coordinator(Config *conf) {
     }
 
     /* build the server's Internet address */
-    bzero((char *) ctx->acceptor_addr, sizeof(struct sockaddr_in));
-    ctx->acceptor_addr->sin_family = AF_INET;
+    bzero((char *) ctx->dest, sizeof(struct sockaddr_in));
+    ctx->dest->sin_family = AF_INET;
     bcopy((char *)server->h_addr,
-      (char *)&(ctx->acceptor_addr->sin_addr.s_addr), server->h_length);
-    ctx->acceptor_addr->sin_port = htons(conf->acceptor_port);
-
-    init_out_msgs(ctx);
+      (char *)&(ctx->dest->sin_addr.s_addr), server->h_length);
+    ctx->dest->sin_port = htons(conf->acceptor_port);
 
     int listen_socket = create_server_socket(conf->coordinator_port);
     addMembership(conf->coordinator_addr, listen_socket);
     ctx->sock = listen_socket;
+
+    socklen_t len = sizeof(struct sockaddr_in);
+    if (getsockname(ctx->sock, (struct sockaddr *)ctx->mine, &len) == -1) {
+        perror("getsockname");
+        exit(EXIT_FAILURE);
+    }
+
+    ctx->rawsock = create_rawsock();
+    init_coord_rawsock(ctx, ctx->mine, ctx->dest);
 
     struct event *ev_recv;
     ev_recv = event_new(ctx->base, ctx->sock, EV_READ|EV_PERSIST, on_value, ctx);
