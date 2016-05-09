@@ -30,9 +30,9 @@ typedef struct Message {
 struct request {
     int request_id;
     char op;
+    struct timespec ts;
     char key[5];
     char value[6];
-    struct timespec ts;
 };
 
 

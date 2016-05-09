@@ -106,19 +106,19 @@ void on_value(evutil_socket_t fd, short what, void *arg) {
     CoordinatorCtx *ctx = (CoordinatorCtx *) arg;
     struct sockaddr_in remote;
     socklen_t remote_len = sizeof(remote);
-
-    int n = recvfrom(fd, ctx->msg_in, sizeof(Message), 0, (struct sockaddr *) &remote, &remote_len);
+    size_t msg_size = sizeof(Message);
+    int n = recvfrom(fd, ctx->msg_in, msg_size, 0, (struct sockaddr *) &remote, &remote_len);
     if (n < 0) {
       perror("ERROR in recvfrom");
       return;
     }
-    unpack(ctx->msg_in);
+    int *inst = (int *)ctx->msg_in;
+    *inst = htonl(ctx->cur_inst);
     if (ctx->conf.verbose) {
         print_message(ctx->msg_in);
     }
-    ctx->msg_in->inst = ctx->cur_inst;
-    pack(ctx->msg_in);
-    send_message(ctx, (char *)ctx->msg_in, sizeof(Message));
+
+    send_message(ctx, (char *)ctx->msg_in, msg_size);
     ctx->cur_inst++;
 }
 
