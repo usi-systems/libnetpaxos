@@ -33,6 +33,7 @@ LearnerCtx *learner_ctx_new(Config conf) {
     ctx->num_packets = 0;
     double maj = ((double)(conf.num_acceptors + 1)) / 2;
     ctx->maj = ceil(maj);
+    ctx->mine = malloc(sizeof (struct sockaddr_in));
     ctx->states = calloc(ctx->conf.maxinst, sizeof(paxos_state*));
     int i;
     for (i = 0; i < ctx->conf.maxinst; i++) {
@@ -73,6 +74,8 @@ void free_learner(LearnerCtx *ctx) {
     free(ctx->iovecs);
     free(ctx->bufs);
     free(ctx->out_bufs);
+    free(ctx->mine);
+    free(ctx->dest);
     free(ctx);
 }
 
@@ -128,6 +131,23 @@ void handle_accepted(LearnerCtx *ctx, Message *msg, evutil_socket_t fd) {
     }
 }
 
+void send_recover_message(struct LearnerCtx * ctx, char * msg, int size) {
+    int n = sendto(ctx->sock, msg, size, 0, (struct sockaddr*)&ctx->dest, sizeof(struct sockaddr_in));
+    if (n < 0) {
+        perror("Send recover message");
+    }
+} 
+
+void recover(struct LearnerCtx * ctx, int instance, char * value, int size) {
+    Message m;
+    initialize_message(&m, phase2a);
+    memcpy(m.paxosval, value, size);
+    m.paxosval[size] = '\0';
+    m.client = *ctx->mine;
+    pack(&m);
+    send_recover_message(ctx, (char*)&m, sizeof(m));
+}
+
 
 void on_value(evutil_socket_t fd, short what, void *arg)
 {
@@ -174,6 +194,27 @@ LearnerCtx* make_learner(Config *conf) {
     int server_socket = create_server_socket(conf->learner_port);
     addMembership(conf->learner_addr, server_socket);
     ctx->sock = server_socket;
+    socklen_t len = sizeof(struct sockaddr_in);
+    if (getsockname(ctx->sock, (struct sockaddr *)ctx->mine, &len) == -1) {
+        perror("getsockname");
+        exit(EXIT_FAILURE);
+    }
+
+    /* build the acceptor's Internet address */
+    struct hostent *server = gethostbyname(ctx->conf.acceptor_addr);
+    if (server == NULL) {
+        fprintf(stderr, "ERROR, no such host as %s\n", ctx->conf.acceptor_addr);
+        exit(EXIT_FAILURE);
+    }
+
+    struct sockaddr_in *acceptor = malloc(sizeof (struct sockaddr_in));
+    bzero((char *) acceptor, sizeof(struct sockaddr_in));
+    acceptor->sin_family = AF_INET;
+    bcopy((char *)server->h_addr,
+      (char *)&(acceptor->sin_addr.s_addr), server->h_length);
+    acceptor->sin_port = htons(ctx->conf.acceptor_port);
+    ctx->dest = acceptor;
+
     ctx->timeout.tv_sec = 1;
     ctx->timeout.tv_usec = 0;
     ctx->recv_ev = event_new(ctx->base, ctx->sock, EV_READ|EV_PERSIST, on_value, ctx);

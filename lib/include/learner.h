@@ -57,10 +57,13 @@ typedef struct LearnerCtx {
     struct iovec *iovecs;
     Message *bufs;
     Message *out_bufs;
+    struct sockaddr_in *mine;
+    struct sockaddr_in *dest;
 } LearnerCtx;
 
 LearnerCtx* make_learner(Config *conf);
 void set_app_ctx(struct LearnerCtx *learner_ctx, void *arg);
 void register_deliver_cb(struct LearnerCtx *learner_ctx, deliver_cb deliver);
+void recover(struct LearnerCtx * ctx, int instance, char * value, int size);
 void free_learner(LearnerCtx *ctx);
 #endif
