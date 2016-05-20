@@ -17,4 +17,5 @@ void setRcvBuf(int sockfd);
 void setReusePort(int sockfd);
 unsigned short csum(unsigned short *ptr, int nbytes);
 void send_msg(int sock, char* msg, int size, struct sockaddr_in *remote);
+int net_ip__is_multicast_ip(char *ip_address);
 #endif

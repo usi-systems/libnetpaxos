@@ -143,7 +143,9 @@ int start_coordinator(Config *conf) {
     ctx->dest->sin_port = htons(conf->acceptor_port);
 
     int listen_socket = create_server_socket(conf->coordinator_port);
-    addMembership(conf->coordinator_addr, listen_socket);
+    if (net_ip__is_multicast_ip(conf->coordinator_addr)) {
+        addMembership(conf->coordinator_addr, listen_socket);
+    }
     ctx->sock = listen_socket;
 
     socklen_t len = sizeof(struct sockaddr_in);

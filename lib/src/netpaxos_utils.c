@@ -175,3 +175,16 @@ void send_msg(int sock, char* msg, int size, struct sockaddr_in *remote) {
         return;
     }
 }
+
+int net_ip__is_multicast_ip(char *ip_address)
+{
+    in_addr_t ip_in_addr = inet_addr(ip_address);
+    char *ip = (char *)&ip_in_addr;
+    int i = ip[0] & 0xFF;
+
+    if(i >=  224 && i <= 239){
+        return 1;
+    }
+
+    return 0;
+}

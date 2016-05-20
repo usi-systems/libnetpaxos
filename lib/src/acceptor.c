@@ -167,7 +167,9 @@ int start_acceptor(Config *conf, int acceptor_id) {
     AcceptorCtx *ctx = acceptor_ctx_new(*conf, acceptor_id);
     ctx->base = event_base_new();
     int server_socket = create_server_socket(conf->acceptor_port);
-    addMembership(conf->acceptor_addr, server_socket);
+    if (net_ip__is_multicast_ip(conf->acceptor_addr)) {
+        addMembership(conf->acceptor_addr, server_socket);
+    }
     ctx->sock = server_socket;
 
     struct hostent *learner;

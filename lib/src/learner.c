@@ -192,7 +192,9 @@ void register_deliver_cb(struct LearnerCtx *learner_ctx, deliver_cb deliver) {
 LearnerCtx* make_learner(Config *conf) {
     LearnerCtx *ctx = learner_ctx_new(*conf);
     int server_socket = create_server_socket(conf->learner_port);
-    addMembership(conf->learner_addr, server_socket);
+    if (net_ip__is_multicast_ip(conf->learner_addr)) {
+        addMembership(conf->learner_addr, server_socket);
+    }
     ctx->sock = server_socket;
     socklen_t len = sizeof(struct sockaddr_in);
     if (getsockname(ctx->sock, (struct sockaddr *)ctx->mine, &len) == -1) {
